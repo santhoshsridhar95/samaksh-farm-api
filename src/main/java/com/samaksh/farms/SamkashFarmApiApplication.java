@@ -1,4 +1,4 @@
-package com.samaksh.samkash_farm_api;
+package com.samaksh.farms;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -1,4 +1,4 @@
-package com.samaksh.samkash_farm_api;
+package com.samaksh.farms;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
