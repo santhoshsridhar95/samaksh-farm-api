@@ -11,9 +11,9 @@ public class ProductionBatchResponse {
 
     private Long id;
 
-    private MushroomType mushroomType;
-
     private String batchCode;
+
+    private MushroomType mushroomType;
 
     private Double spawnUsed;
 

@@ -3,6 +3,7 @@ package com.samaksh.farms.auth.service;
 import com.samaksh.farms.auth.dto.LoginRequest;
 import com.samaksh.farms.auth.dto.LoginResponse;
 import com.samaksh.farms.auth.jwt.JwtService;
+import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.user.entity.User;
 import com.samaksh.farms.user.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,8 +30,8 @@ public class AuthService {
                                 request.getEmail()
                         )
                         .orElseThrow(
-                                () -> new RuntimeException(
-                                        "Invalid Credentials"
+                                () -> new ResourceNotFoundException(
+                                        "Invalid Credentials for", request.getEmail()
                                 )
                         );
 
@@ -42,8 +43,8 @@ public class AuthService {
 
         if (!valid) {
 
-            throw new RuntimeException(
-                    "Invalid Credentials"
+            throw new ResourceNotFoundException(
+                    "Invalid Credentials for", request.getEmail()
             );
         }
 

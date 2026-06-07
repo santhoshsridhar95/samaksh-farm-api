@@ -1,20 +1,20 @@
 package com.samaksh.farms.user.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.samaksh.farms.enums.Role;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@ToString(exclude = "password")
 public class User {
 
     @Id
@@ -30,6 +30,7 @@ public class User {
     )
     private String email;
 
+    @JsonIgnore
     @Column(nullable = false)
     private String password;
 
