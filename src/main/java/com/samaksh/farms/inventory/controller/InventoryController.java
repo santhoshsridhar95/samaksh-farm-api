@@ -17,7 +17,7 @@ public class InventoryController {
     private final InventoryService inventoryService;
 
     @PostMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','FARM_MANAGER')")
     public InventoryResponse createInventory(
             @RequestBody InventoryRequest request
     ) {

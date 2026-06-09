@@ -4,18 +4,20 @@ import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
+import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.products.entity.Product;
 import com.samaksh.farms.products.repo.ProductRepository;
+import com.samaksh.farms.sale.dto.PagedResponse;
 import com.samaksh.farms.sale.dto.SaleRequest;
 import com.samaksh.farms.sale.dto.SaleResponse;
 import com.samaksh.farms.sale.entity.Sale;
 import com.samaksh.farms.sale.repo.SaleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -62,9 +64,15 @@ public class SaleService {
                 Sale.builder()
                         .customer(customer)
                         .product(product)
-                        .quantity(request.getQuantity())
-                        .unitPrice(request.getUnitPrice())
-                        .totalAmount(totalAmount)
+                        .quantity(
+                                request.getQuantity()
+                        )
+                        .unitPrice(
+                                request.getUnitPrice()
+                        )
+                        .totalAmount(
+                                totalAmount
+                        )
                         .paymentStatus(
                                 request.getPaymentStatus()
                         )
@@ -77,7 +85,9 @@ public class SaleService {
                         .build();
 
         Sale savedSale =
-                saleRepository.save(sale);
+                saleRepository.save(
+                        sale
+                );
 
         auditService.createAudit(
                 authentication,
@@ -88,15 +98,87 @@ public class SaleService {
                         + totalAmount
         );
 
-        return mapToResponse(savedSale);
+        return mapToResponse(
+                savedSale
+        );
     }
 
-    public List<SaleResponse> getSales() {
+    public PagedResponse<SaleResponse> getSales(
+            int page,
+            int size,
+            Long customerId,
+            PaymentStatus paymentStatus
+    ) {
 
-        return saleRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by("saleDate")
+                                .descending()
+                );
+
+        Page<Sale> sales;
+
+        if (customerId != null &&
+                paymentStatus != null) {
+
+            sales =
+                    saleRepository
+                            .findByCustomerIdAndPaymentStatus(
+                                    customerId,
+                                    paymentStatus,
+                                    pageable
+                            );
+
+        } else if (customerId != null) {
+
+            sales =
+                    saleRepository.findByCustomerId(
+                            customerId,
+                            pageable
+                    );
+
+        } else if (paymentStatus != null) {
+
+            sales =
+                    saleRepository.findByPaymentStatus(
+                            paymentStatus,
+                            pageable
+                    );
+
+        } else {
+
+            sales =
+                    saleRepository.findAll(
+                            pageable
+                    );
+        }
+
+        return PagedResponse
+                .<SaleResponse>builder()
+                .content(
+                        sales.getContent()
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList()
+                )
+                .page(
+                        sales.getNumber()
+                )
+                .size(
+                        sales.getSize()
+                )
+                .totalElements(
+                        sales.getTotalElements()
+                )
+                .totalPages(
+                        sales.getTotalPages()
+                )
+                .last(
+                        sales.isLast()
+                )
+                .build();
     }
 
     private SaleResponse mapToResponse(
@@ -104,7 +186,9 @@ public class SaleService {
     ) {
 
         return SaleResponse.builder()
-                .id(sale.getId())
+                .id(
+                        sale.getId()
+                )
                 .customerName(
                         sale.getCustomer()
                                 .getCustomerName()

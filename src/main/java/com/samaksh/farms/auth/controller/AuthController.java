@@ -3,6 +3,7 @@ package com.samaksh.farms.auth.controller;
 import com.samaksh.farms.auth.dto.LoginRequest;
 import com.samaksh.farms.auth.dto.LoginResponse;
 import com.samaksh.farms.auth.service.AuthService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,7 @@ public class AuthController {
 
     @PostMapping("/login")
     public LoginResponse login(
+            @Valid
             @RequestBody
             LoginRequest request
     ) {

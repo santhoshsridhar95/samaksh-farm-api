@@ -3,6 +3,7 @@ package com.samaksh.farms.user.controller;
 import com.samaksh.farms.common.dto.ApiResponse;
 import com.samaksh.farms.user.dto.*;
 import com.samaksh.farms.user.service.UserService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -31,7 +32,7 @@ public class UserController {
     @PostMapping
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<UserResponse> createUser(
-            @RequestBody UserRequest request,
+            @Valid @RequestBody UserRequest request,
             Authentication authentication
     ) {
 
@@ -92,7 +93,7 @@ public class UserController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<UserResponse> changeRole(
             @PathVariable Long id,
-            @RequestBody ChangeRoleRequest request,
+            @Valid @RequestBody ChangeRoleRequest request,
             Authentication authentication
     ) {
 
@@ -114,7 +115,7 @@ public class UserController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<String> resetPassword(
             @PathVariable Long id,
-            @RequestBody ResetPasswordRequest request,
+            @Valid @RequestBody ResetPasswordRequest request,
             Authentication authentication
     ) {
 

@@ -24,11 +24,41 @@ public class ProductionBatch {
 
     private String batchCode;
 
-    private Double spawnUsed;
+    /*
+     * Labour Input
+     */
 
-    private Double pelletsUsed;
+    private Integer bagsPrepared;
 
-    private Double bagsUsed;
+    private Integer damagedCovers;
+
+    private Double damagedSpawnKg;
+
+    private Double damagedPelletsKg;
+
+    /*
+     * System Calculated
+     */
+
+    private Double spawnUsedKg;
+
+    private Double pelletsUsedKg;
+
+    private Integer coversUsed;
+
+    /*
+     * Cultivation Tracking
+     */
+
+    private Integer darkRoomBags;
+
+    private Integer lightRoomBags;
+
+    private Integer contaminatedBags;
+
+    private Integer discardedBags;
+
+    private String remarks;
 
     private LocalDate startDate;
 

@@ -9,9 +9,13 @@ import lombok.Data;
 @AllArgsConstructor
 public class LoginResponse {
 
+    private Long userId;
+
     private String token;
 
     private String role;
 
     private String name;
+
+    private Boolean active;
 }

@@ -6,5 +6,9 @@ public enum TransactionType {
 
     CONSUMPTION,
 
-    ADJUSTMENT
+    ADJUSTMENT,
+
+    DAMAGE,
+
+    WASTAGE
 }

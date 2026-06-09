@@ -1,14 +1,14 @@
 package com.samaksh.farms.sale.controller;
 
 import com.samaksh.farms.common.dto.ApiResponse;
+import com.samaksh.farms.enums.PaymentStatus;
+import com.samaksh.farms.sale.dto.PagedResponse;
 import com.samaksh.farms.sale.dto.SaleRequest;
 import com.samaksh.farms.sale.dto.SaleResponse;
 import com.samaksh.farms.sale.service.SaleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/sales")
@@ -26,7 +26,9 @@ public class SaleController {
         return ApiResponse
                 .<SaleResponse>builder()
                 .success(true)
-                .message("Sale created successfully")
+                .message(
+                        "Sale created successfully"
+                )
                 .data(
                         saleService.createSale(
                                 request,
@@ -37,14 +39,43 @@ public class SaleController {
     }
 
     @GetMapping
-    public ApiResponse<List<SaleResponse>> getSales() {
+    public ApiResponse<PagedResponse<SaleResponse>>
+    getSales(
+
+            @RequestParam(
+                    defaultValue = "0"
+            )
+            int page,
+
+            @RequestParam(
+                    defaultValue = "10"
+            )
+            int size,
+
+            @RequestParam(
+                    required = false
+            )
+            Long customerId,
+
+            @RequestParam(
+                    required = false
+            )
+            PaymentStatus paymentStatus
+    ) {
 
         return ApiResponse
-                .<List<SaleResponse>>builder()
+                .<PagedResponse<SaleResponse>>builder()
                 .success(true)
-                .message("Sales fetched successfully")
+                .message(
+                        "Sales fetched successfully"
+                )
                 .data(
-                        saleService.getSales()
+                        saleService.getSales(
+                                page,
+                                size,
+                                customerId,
+                                paymentStatus
+                        )
                 )
                 .build();
     }

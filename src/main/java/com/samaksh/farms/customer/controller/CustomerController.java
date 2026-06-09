@@ -3,12 +3,11 @@ package com.samaksh.farms.customer.controller;
 import com.samaksh.farms.common.dto.ApiResponse;
 import com.samaksh.farms.customer.dto.CustomerRequest;
 import com.samaksh.farms.customer.dto.CustomerResponse;
+import com.samaksh.farms.customer.dto.PagedResponse;
 import com.samaksh.farms.customer.service.CustomerService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/customers")
@@ -39,16 +38,37 @@ public class CustomerController {
     }
 
     @GetMapping
-    public ApiResponse<List<CustomerResponse>> getCustomers() {
+    public ApiResponse<PagedResponse<CustomerResponse>>
+    getCustomers(
+
+            @RequestParam(
+                    defaultValue = "0"
+            )
+            int page,
+
+            @RequestParam(
+                    defaultValue = "10"
+            )
+            int size,
+
+            @RequestParam(
+                    required = false
+            )
+            String search
+    ) {
 
         return ApiResponse
-                .<List<CustomerResponse>>builder()
+                .<PagedResponse<CustomerResponse>>builder()
                 .success(true)
                 .message(
                         "Customers fetched successfully"
                 )
                 .data(
-                        customerService.getCustomers()
+                        customerService.getCustomers(
+                                page,
+                                size,
+                                search
+                        )
                 )
                 .build();
     }

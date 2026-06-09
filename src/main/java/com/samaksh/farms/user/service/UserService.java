@@ -2,6 +2,7 @@ package com.samaksh.farms.user.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.enums.Role;
 import com.samaksh.farms.user.dto.ChangeRoleRequest;
 import com.samaksh.farms.user.dto.ResetPasswordRequest;
 import com.samaksh.farms.user.dto.UserRequest;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -39,8 +41,13 @@ public class UserService {
             Authentication authentication
     ) {
 
-        if (userRepository.findByEmail(
+        String email =
                 request.getEmail()
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
+
+        if (userRepository.findByEmail(
+                email
         ).isPresent()) {
 
             throw new RuntimeException(
@@ -50,7 +57,7 @@ public class UserService {
 
         User user = User.builder()
                 .name(request.getName())
-                .email(request.getEmail())
+                .email(email)
                 .password(
                         passwordEncoder.encode(
                                 request.getPassword()
@@ -89,6 +96,13 @@ public class UserService {
                                                 userId
                                         )
                         );
+
+        preventSelfDisable(
+                user,
+                authentication
+        );
+
+        preventRemovingLastActiveSuperAdmin(user);
 
         user.setActive(false);
 
@@ -153,6 +167,11 @@ public class UserService {
                                         )
                         );
 
+        preventRemovingLastActiveSuperAdmin(
+                user,
+                request.getRole()
+        );
+
         user.setRole(request.getRole());
 
         User savedUser =
@@ -214,5 +233,72 @@ public class UserService {
                 .role(user.getRole())
                 .active(user.getActive())
                 .build();
+    }
+
+    private void preventSelfDisable(
+            User targetUser,
+            Authentication authentication
+    ) {
+
+        User actor = currentUser(authentication);
+
+        if (actor != null
+                && actor.getId() != null
+                && actor.getId().equals(targetUser.getId())) {
+
+            throw new IllegalStateException(
+                    "You cannot disable your own account"
+            );
+        }
+    }
+
+    private void preventRemovingLastActiveSuperAdmin(
+            User targetUser
+    ) {
+
+        if (targetUser.getRole() == Role.SUPER_ADMIN
+                && targetUser.getActive()
+                && userRepository.countByRoleAndActiveTrue(
+                Role.SUPER_ADMIN
+        ) <= 1) {
+
+            throw new IllegalStateException(
+                    "At least one active SUPER_ADMIN is required"
+            );
+        }
+    }
+
+    private void preventRemovingLastActiveSuperAdmin(
+            User targetUser,
+            Role nextRole
+    ) {
+
+        boolean removesSuperAdmin =
+                targetUser.getRole() == Role.SUPER_ADMIN
+                        && targetUser.getActive()
+                        && nextRole != Role.SUPER_ADMIN;
+
+        if (removesSuperAdmin
+                && userRepository.countByRoleAndActiveTrue(
+                Role.SUPER_ADMIN
+        ) <= 1) {
+
+            throw new IllegalStateException(
+                    "At least one active SUPER_ADMIN is required"
+            );
+        }
+    }
+
+    private User currentUser(
+            Authentication authentication
+    ) {
+
+        if (authentication == null
+                || !(authentication.getPrincipal() instanceof User user)) {
+
+            return null;
+        }
+
+        return user;
     }
 }

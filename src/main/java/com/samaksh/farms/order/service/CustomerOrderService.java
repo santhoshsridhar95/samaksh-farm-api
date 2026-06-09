@@ -8,6 +8,7 @@ import com.samaksh.farms.enums.OrderStatus;
 import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.order.dto.CustomerOrderRequest;
 import com.samaksh.farms.order.dto.CustomerOrderResponse;
+import com.samaksh.farms.order.dto.PagedResponse;
 import com.samaksh.farms.order.entity.CustomerOrder;
 import com.samaksh.farms.order.repo.CustomerOrderRepository;
 import com.samaksh.farms.products.entity.Product;
@@ -17,7 +18,9 @@ import com.samaksh.farms.sale.repo.SaleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
-
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -186,14 +189,6 @@ public class CustomerOrderService {
         );
     }
 
-    public List<CustomerOrderResponse> getOrders() {
-
-        return orderRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
-    }
-
     private CustomerOrderResponse mapToResponse(
             CustomerOrder order
     ) {
@@ -244,5 +239,61 @@ public class CustomerOrderService {
                 "%04d",
                 count
         );
+    }
+
+    public PagedResponse<CustomerOrderResponse> getOrders(
+            int page,
+            int size,
+            OrderStatus status
+    ) {
+
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size
+                );
+
+        Page<CustomerOrder> orders;
+
+        if (status != null) {
+
+            orders =
+                    orderRepository.findByStatus(
+                            status,
+                            pageable
+                    );
+
+        } else {
+
+            orders =
+                    orderRepository.findAll(
+                            pageable
+                    );
+        }
+
+        return PagedResponse
+                .<CustomerOrderResponse>builder()
+                .content(
+                        orders.getContent()
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList()
+                )
+                .page(
+                        orders.getNumber()
+                )
+                .size(
+                        orders.getSize()
+                )
+                .totalElements(
+                        orders.getTotalElements()
+                )
+                .totalPages(
+                        orders.getTotalPages()
+                )
+                .last(
+                        orders.isLast()
+                )
+                .build();
     }
 }

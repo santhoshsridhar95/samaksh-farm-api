@@ -1,14 +1,14 @@
 package com.samaksh.farms.order.controller;
 
 import com.samaksh.farms.common.dto.ApiResponse;
+import com.samaksh.farms.enums.OrderStatus;
 import com.samaksh.farms.order.dto.CustomerOrderRequest;
 import com.samaksh.farms.order.dto.CustomerOrderResponse;
+import com.samaksh.farms.order.dto.PagedResponse;
 import com.samaksh.farms.order.service.CustomerOrderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/orders")
@@ -58,15 +58,35 @@ public class CustomerOrderController {
     }
 
     @GetMapping
-    public ApiResponse<List<CustomerOrderResponse>>
-    getOrders() {
+    public ApiResponse<PagedResponse<CustomerOrderResponse>>
+    getOrders(
+
+            @RequestParam(
+                    defaultValue = "0"
+            )
+            int page,
+
+            @RequestParam(
+                    defaultValue = "10"
+            )
+            int size,
+
+            @RequestParam(
+                    required = false
+            )
+            OrderStatus status
+    ) {
 
         return ApiResponse
-                .<List<CustomerOrderResponse>>builder()
+                .<PagedResponse<CustomerOrderResponse>>builder()
                 .success(true)
                 .message("Orders fetched successfully")
                 .data(
-                        orderService.getOrders()
+                        orderService.getOrders(
+                                page,
+                                size,
+                                status
+                        )
                 )
                 .build();
     }

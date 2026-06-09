@@ -3,15 +3,18 @@ package com.samaksh.farms.customer.service;
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.customer.dto.CustomerRequest;
 import com.samaksh.farms.customer.dto.CustomerResponse;
+import com.samaksh.farms.customer.dto.PagedResponse;
 import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
-import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -63,12 +66,66 @@ public class CustomerService {
         return mapToResponse(savedCustomer);
     }
 
-    public List<CustomerResponse> getCustomers() {
+    public PagedResponse<CustomerResponse> getCustomers(
+            int page,
+            int size,
+            String search
+    ) {
 
-        return customerRepository.findAll()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by("customerName")
+                                .ascending()
+                );
+
+        Page<Customer> customers;
+
+        if (search != null &&
+                !search.isBlank()) {
+
+            customers =
+                    customerRepository
+                            .findByCustomerNameContainingIgnoreCaseOrContactPersonContainingIgnoreCaseOrPhoneNumberContainingIgnoreCase(
+                                    search,
+                                    search,
+                                    search,
+                                    pageable
+                            );
+
+        } else {
+
+            customers =
+                    customerRepository.findAll(
+                            pageable
+                    );
+        }
+
+        return PagedResponse
+                .<CustomerResponse>builder()
+                .content(
+                        customers.getContent()
+                                .stream()
+                                .map(this::mapToResponse)
+                                .toList()
+                )
+                .page(
+                        customers.getNumber()
+                )
+                .size(
+                        customers.getSize()
+                )
+                .totalElements(
+                        customers.getTotalElements()
+                )
+                .totalPages(
+                        customers.getTotalPages()
+                )
+                .last(
+                        customers.isLast()
+                )
+                .build();
     }
 
     private CustomerResponse mapToResponse(
@@ -76,13 +133,27 @@ public class CustomerService {
     ) {
 
         return CustomerResponse.builder()
-                .id(customer.getId())
-                .customerName(customer.getCustomerName())
-                .contactPerson(customer.getContactPerson())
-                .phoneNumber(customer.getPhoneNumber())
-                .email(customer.getEmail())
-                .address(customer.getAddress())
-                .active(customer.getActive())
+                .id(
+                        customer.getId()
+                )
+                .customerName(
+                        customer.getCustomerName()
+                )
+                .contactPerson(
+                        customer.getContactPerson()
+                )
+                .phoneNumber(
+                        customer.getPhoneNumber()
+                )
+                .email(
+                        customer.getEmail()
+                )
+                .address(
+                        customer.getAddress()
+                )
+                .active(
+                        customer.getActive()
+                )
                 .build();
     }
 }

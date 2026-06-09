@@ -21,5 +21,13 @@ public class ProductionBatchResponse {
 
     private Double bagsUsed;
 
+    private Integer darkRoomBags;
+
+    private Integer lightRoomBags;
+
+    private Integer contaminatedBags;
+
+    private Integer discardedBags;
+
     private BatchStatus status;
 }

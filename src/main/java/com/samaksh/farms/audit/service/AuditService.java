@@ -25,16 +25,26 @@ public class AuditService {
             String remarks
     ) {
 
-        User user =
-                (User) authentication.getPrincipal();
+        Long userId = 0L;
+
+        String userEmail = "SYSTEM";
+
+        if (authentication != null
+                && authentication.getPrincipal()
+                instanceof User user) {
+
+            userId = user.getId();
+
+            userEmail = user.getEmail();
+        }
 
         AuditLog auditLog =
                 AuditLog.builder()
                         .userId(
-                                user.getId()
+                                userId
                         )
                         .userEmail(
-                                user.getEmail()
+                                userEmail
                         )
                         .module(
                                 module
@@ -53,7 +63,9 @@ public class AuditService {
                         )
                         .build();
 
-        auditLogRepository.save(auditLog);
+        auditLogRepository.save(
+                auditLog
+        );
     }
 
     public List<AuditResponse> getAuditLogs() {
@@ -69,13 +81,27 @@ public class AuditService {
     ) {
 
         return AuditResponse.builder()
-                .id(auditLog.getId())
-                .userEmail(auditLog.getUserEmail())
-                .module(auditLog.getModule())
-                .action(auditLog.getAction())
-                .referenceId(auditLog.getReferenceId())
-                .remarks(auditLog.getRemarks())
-                .createdAt(auditLog.getCreatedAt())
+                .id(
+                        auditLog.getId()
+                )
+                .userEmail(
+                        auditLog.getUserEmail()
+                )
+                .module(
+                        auditLog.getModule()
+                )
+                .action(
+                        auditLog.getAction()
+                )
+                .referenceId(
+                        auditLog.getReferenceId()
+                )
+                .remarks(
+                        auditLog.getRemarks()
+                )
+                .createdAt(
+                        auditLog.getCreatedAt()
+                )
                 .build();
     }
 }

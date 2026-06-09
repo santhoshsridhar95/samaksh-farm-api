@@ -42,12 +42,12 @@ public class AnalyticsService {
 
         double yieldPerSpawn = 0;
 
-        if (batch.getSpawnUsed() != null
-                && batch.getSpawnUsed() > 0) {
+        if (batch.getSpawnUsedKg() != null
+                && batch.getSpawnUsedKg() > 0) {
 
             yieldPerSpawn =
                     totalHarvest
-                            / batch.getSpawnUsed();
+                            / batch.getSpawnUsedKg();
         }
 
         return YieldAnalyticsResponse.builder()
@@ -55,7 +55,7 @@ public class AnalyticsService {
                         batch.getBatchCode()
                 )
                 .spawnUsed(
-                        batch.getSpawnUsed()
+                        batch.getSpawnUsedKg()
                 )
                 .totalHarvestKg(
                         totalHarvest

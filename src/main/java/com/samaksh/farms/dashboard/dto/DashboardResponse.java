@@ -7,9 +7,19 @@ import lombok.Data;
 @Builder
 public class DashboardResponse {
 
-    private Long activeBatches;
+    private Long totalCustomers;
 
-    private Long totalHarvestEntries;
+    private Long totalProducts;
 
-    private InventoryBalanceResponse inventory;
+    private Long totalOrders;
+
+    private Long pendingOrders;
+
+    private Long fulfilledOrders;
+
+    private Long totalSales;
+
+    private Double totalRevenue;
+
+    private Double pendingRevenue;
 }

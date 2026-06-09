@@ -9,7 +9,8 @@ import java.util.List;
 public interface InventoryTransactionRepository
         extends JpaRepository<InventoryTransaction, Long> {
 
-    List<InventoryTransaction> findByInventoryType(
+    List<InventoryTransaction>
+    findByInventoryType(
             InventoryType inventoryType
     );
 }

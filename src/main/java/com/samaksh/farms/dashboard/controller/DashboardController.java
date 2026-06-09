@@ -21,7 +21,9 @@ public class DashboardController {
         return ApiResponse
                 .<DashboardResponse>builder()
                 .success(true)
-                .message("Dashboard fetched successfully")
+                .message(
+                        "Dashboard fetched successfully"
+                )
                 .data(
                         dashboardService.getDashboard()
                 )

@@ -1,6 +1,7 @@
 package com.samaksh.farms.production.service;
 
 import com.samaksh.farms.audit.service.AuditService;
+import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.enums.BatchStatus;
 import com.samaksh.farms.enums.InventoryType;
 import com.samaksh.farms.enums.MushroomType;
@@ -9,8 +10,11 @@ import com.samaksh.farms.inventorytransaction.entity.InventoryTransaction;
 import com.samaksh.farms.inventorytransaction.repo.InventoryTransactionRepository;
 import com.samaksh.farms.production.dto.ProductionBatchRequest;
 import com.samaksh.farms.production.dto.ProductionBatchResponse;
+import com.samaksh.farms.production.dto.RoomTransferRequest;
 import com.samaksh.farms.production.entity.ProductionBatch;
 import com.samaksh.farms.production.repo.ProductionBatchRepository;
+import com.samaksh.farms.productionmovement.entity.ProductionMovement;
+import com.samaksh.farms.productionmovement.repo.ProductionMovementRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -27,12 +31,29 @@ public class ProductionBatchService {
 
     private final InventoryTransactionRepository inventoryTransactionRepository;
 
+    private final ProductionMovementRepository productionMovementRepository;
+
     private final AuditService auditService;
 
     public ProductionBatchResponse createBatch(
             ProductionBatchRequest request,
             Authentication authentication
     ) {
+
+        double calculatedSpawnKg =
+                request.getBagsPrepared() * 0.150;
+
+        double calculatedPelletsKg =
+                request.getBagsPrepared();
+
+        int calculatedCovers =
+                request.getBagsPrepared();
+
+        validateInventory(
+                calculatedSpawnKg,
+                calculatedPelletsKg,
+                calculatedCovers
+        );
 
         ProductionBatch batch =
                 ProductionBatch.builder()
@@ -44,14 +65,41 @@ public class ProductionBatchService {
                         .mushroomType(
                                 request.getMushroomType()
                         )
-                        .spawnUsed(
-                                request.getSpawnUsed()
+                        .bagsPrepared(
+                                request.getBagsPrepared()
                         )
-                        .pelletsUsed(
-                                request.getPelletsUsed()
+                        .damagedCovers(
+                                request.getDamagedCovers()
                         )
-                        .bagsUsed(
-                                request.getBagsUsed()
+                        .damagedSpawnKg(
+                                request.getDamagedSpawnKg()
+                        )
+                        .damagedPelletsKg(
+                                request.getDamagedPelletsKg()
+                        )
+                        .spawnUsedKg(
+                                calculatedSpawnKg
+                        )
+                        .pelletsUsedKg(
+                                calculatedPelletsKg
+                        )
+                        .coversUsed(
+                                calculatedCovers
+                        )
+                        .darkRoomBags(
+                                request.getBagsPrepared()
+                        )
+                        .lightRoomBags(
+                                0
+                        )
+                        .contaminatedBags(
+                                0
+                        )
+                        .discardedBags(
+                                0
+                        )
+                        .remarks(
+                                request.getRemarks()
                         )
                         .startDate(
                                 LocalDate.now()
@@ -62,23 +110,45 @@ public class ProductionBatchService {
                         .build();
 
         ProductionBatch savedBatch =
-                productionBatchRepository.save(batch);
+                productionBatchRepository.save(
+                        batch
+                );
 
         createConsumptionTransaction(
                 InventoryType.SPAWN,
-                request.getSpawnUsed(),
+                calculatedSpawnKg,
                 savedBatch.getBatchCode()
         );
 
         createConsumptionTransaction(
                 InventoryType.PELLET,
-                request.getPelletsUsed(),
+                calculatedPelletsKg,
                 savedBatch.getBatchCode()
         );
 
         createConsumptionTransaction(
                 InventoryType.BAG,
-                request.getBagsUsed(),
+                (double) calculatedCovers,
+                savedBatch.getBatchCode()
+        );
+
+        createDamageTransaction(
+                InventoryType.SPAWN,
+                request.getDamagedSpawnKg(),
+                savedBatch.getBatchCode()
+        );
+
+        createDamageTransaction(
+                InventoryType.PELLET,
+                request.getDamagedPelletsKg(),
+                savedBatch.getBatchCode()
+        );
+
+        createDamageTransaction(
+                InventoryType.BAG,
+                request.getDamagedCovers() == null
+                        ? 0.0
+                        : request.getDamagedCovers().doubleValue(),
                 savedBatch.getBatchCode()
         );
 
@@ -90,7 +160,116 @@ public class ProductionBatchService {
                 "Production batch created"
         );
 
-        return mapToResponse(savedBatch);
+        return mapToResponse(
+                savedBatch
+        );
+    }
+
+    public ProductionBatchResponse transferToLightRoom(
+            Long batchId,
+            RoomTransferRequest request,
+            Authentication authentication
+    ) {
+
+        ProductionBatch batch =
+                productionBatchRepository.findById(
+                        batchId
+                ).orElseThrow(
+                        () -> new ResourceNotFoundException(
+                                "Batch",
+                                batchId
+                        )
+                );
+
+        int moved =
+                request.getMovedToLightRoom() == null
+                        ? 0
+                        : request.getMovedToLightRoom();
+
+        int contaminated =
+                request.getContaminatedBags() == null
+                        ? 0
+                        : request.getContaminatedBags();
+
+        int discarded =
+                request.getDiscardedBags() == null
+                        ? 0
+                        : request.getDiscardedBags();
+
+        int totalProcessed =
+                moved
+                        + contaminated
+                        + discarded;
+
+        if (totalProcessed > batch.getDarkRoomBags()) {
+
+            throw new RuntimeException(
+                    "Processed bags exceed available dark room bags"
+            );
+        }
+
+        batch.setDarkRoomBags(
+                batch.getDarkRoomBags()
+                        - totalProcessed
+        );
+
+        batch.setLightRoomBags(
+                batch.getLightRoomBags()
+                        + moved
+        );
+
+        batch.setContaminatedBags(
+                batch.getContaminatedBags()
+                        + contaminated
+        );
+
+        batch.setDiscardedBags(
+                batch.getDiscardedBags()
+                        + discarded
+        );
+
+        ProductionBatch savedBatch =
+                productionBatchRepository.save(
+                        batch
+                );
+
+        ProductionMovement movement =
+                ProductionMovement.builder()
+                        .batch(
+                                savedBatch
+                        )
+                        .movedToLightRoom(
+                                moved
+                        )
+                        .contaminatedBags(
+                                contaminated
+                        )
+                        .discardedBags(
+                                discarded
+                        )
+                        .remarks(
+                                request.getRemarks()
+                        )
+                        .movementDate(
+                                LocalDateTime.now()
+                        )
+                        .build();
+
+        productionMovementRepository.save(
+                movement
+        );
+
+        auditService.createAudit(
+                authentication,
+                "PRODUCTION",
+                "TRANSFER_TO_LIGHT_ROOM",
+                savedBatch.getBatchCode(),
+                request.getRemarks()
+        );
+
+        return mapToResponse(
+                savedBatch
+        );
     }
 
     public List<ProductionBatchResponse> getAllBatches() {
@@ -99,6 +278,118 @@ public class ProductionBatchService {
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    private double getAvailableInventory(
+            InventoryType inventoryType
+    ) {
+
+        List<InventoryTransaction> transactions =
+                inventoryTransactionRepository
+                        .findByInventoryType(
+                                inventoryType
+                        );
+
+        double available = 0;
+
+        for (InventoryTransaction transaction
+                : transactions) {
+
+            switch (
+                    transaction.getTransactionType()
+            ) {
+
+                case PURCHASE ->
+
+                        available +=
+                                transaction.getQuantity();
+
+                case CONSUMPTION,
+                     DAMAGE ->
+
+                        available -=
+                                transaction.getQuantity();
+            }
+        }
+
+        return available;
+    }
+
+    private void validateInventory(
+            double requiredSpawn,
+            double requiredPellets,
+            double requiredBags
+    ) {
+
+        double availableSpawn =
+                getAvailableInventory(
+                        InventoryType.SPAWN
+                );
+
+        double availablePellets =
+                getAvailableInventory(
+                        InventoryType.PELLET
+                );
+
+        double availableBags =
+                getAvailableInventory(
+                        InventoryType.BAG
+                );
+
+        if (availableSpawn < requiredSpawn) {
+
+            throw new RuntimeException(
+                    "Insufficient Spawn Stock. Available : "
+                            + availableSpawn
+                            + " KG, Required : "
+                            + requiredSpawn
+                            + " KG"
+            );
+        }
+
+        if (availablePellets < requiredPellets) {
+
+            throw new RuntimeException(
+                    "Insufficient Pellet Stock. Available : "
+                            + availablePellets
+                            + " KG, Required : "
+                            + requiredPellets
+                            + " KG"
+            );
+        }
+
+        if (availableBags < requiredBags) {
+
+            throw new RuntimeException(
+                    "Insufficient Bag Stock. Available : "
+                            + availableBags
+                            + ", Required : "
+                            + requiredBags
+            );
+        }
+    }
+
+    private ProductionBatchResponse mapToResponse(
+            ProductionBatch batch
+    ) {
+
+        return ProductionBatchResponse.builder()
+                .id(batch.getId())
+                .batchCode(batch.getBatchCode())
+                .mushroomType(batch.getMushroomType())
+                .spawnUsed(batch.getSpawnUsedKg())
+                .pelletsUsed(batch.getPelletsUsedKg())
+                .bagsUsed(
+                        batch.getBagsPrepared() == null
+                                ? 0.0
+                                : batch.getBagsPrepared().doubleValue()
+                )
+                .darkRoomBags(batch.getDarkRoomBags())
+                .lightRoomBags(batch.getLightRoomBags())
+                .contaminatedBags(batch.getContaminatedBags())
+                .discardedBags(batch.getDiscardedBags())
+                .status(batch.getStatus())
+                .build();
     }
 
     private void createConsumptionTransaction(
@@ -111,50 +402,40 @@ public class ProductionBatchService {
             return;
         }
 
-        InventoryTransaction transaction =
-                InventoryTransaction.builder()
-                        .inventoryType(
-                                inventoryType
-                        )
-                        .transactionType(
-                                TransactionType.CONSUMPTION
-                        )
-                        .quantity(
-                                quantity
-                        )
-                        .remarks(
-                                "Consumed in batch "
-                                        + batchCode
-                        )
-                        .createdByUserId(
-                                0L
-                        )
-                        .createdByEmail(
-                                "SYSTEM"
-                        )
-                        .createdAt(
-                                LocalDateTime.now()
-                        )
-                        .build();
-
         inventoryTransactionRepository.save(
-                transaction
+                InventoryTransaction.builder()
+                        .inventoryType(inventoryType)
+                        .transactionType(TransactionType.CONSUMPTION)
+                        .quantity(quantity)
+                        .remarks("Consumed in batch " + batchCode)
+                        .createdByUserId(0L)
+                        .createdByEmail("SYSTEM")
+                        .createdAt(LocalDateTime.now())
+                        .build()
         );
     }
 
-    private ProductionBatchResponse mapToResponse(
-            ProductionBatch batch
+    private void createDamageTransaction(
+            InventoryType inventoryType,
+            Double quantity,
+            String batchCode
     ) {
 
-        return ProductionBatchResponse.builder()
-                .id(batch.getId())
-                .batchCode(batch.getBatchCode())
-                .mushroomType(batch.getMushroomType())
-                .spawnUsed(batch.getSpawnUsed())
-                .pelletsUsed(batch.getPelletsUsed())
-                .bagsUsed(batch.getBagsUsed())
-                .status(batch.getStatus())
-                .build();
+        if (quantity == null || quantity <= 0) {
+            return;
+        }
+
+        inventoryTransactionRepository.save(
+                InventoryTransaction.builder()
+                        .inventoryType(inventoryType)
+                        .transactionType(TransactionType.DAMAGE)
+                        .quantity(quantity)
+                        .remarks("Damaged during batch " + batchCode)
+                        .createdByUserId(0L)
+                        .createdByEmail("SYSTEM")
+                        .createdAt(LocalDateTime.now())
+                        .build()
+        );
     }
 
     private String generateBatchCode(
@@ -180,12 +461,9 @@ public class ProductionBatchService {
                 productionBatchRepository.count() + 1;
 
         return prefix +
-                "-" +
-                date +
-                "-" +
-                String.format(
-                        "%03d",
-                        count
-                );
+                "-"
+                + date
+                + "-"
+                + String.format("%03d", count);
     }
 }

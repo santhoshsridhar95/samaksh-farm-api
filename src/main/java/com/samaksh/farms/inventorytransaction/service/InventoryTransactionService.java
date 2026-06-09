@@ -26,8 +26,18 @@ public class InventoryTransactionService {
             Authentication authentication
     ) {
 
-        User loggedInUser =
-                (User) authentication.getPrincipal();
+        Long userId = 0L;
+
+        String email = "SYSTEM";
+
+        if (authentication != null
+                && authentication.getPrincipal()
+                instanceof User loggedInUser) {
+
+            userId = loggedInUser.getId();
+
+            email = loggedInUser.getEmail();
+        }
 
         InventoryTransaction transaction =
                 InventoryTransaction.builder()
@@ -44,10 +54,10 @@ public class InventoryTransactionService {
                                 request.getRemarks()
                         )
                         .createdByUserId(
-                                loggedInUser.getId()
+                                userId
                         )
                         .createdByEmail(
-                                loggedInUser.getEmail()
+                                email
                         )
                         .createdAt(
                                 LocalDateTime.now()
@@ -55,20 +65,29 @@ public class InventoryTransactionService {
                         .build();
 
         InventoryTransaction saved =
-                repository.save(transaction);
+                repository.save(
+                        transaction
+                );
 
-        auditService.createAudit(
-                authentication,
-                "INVENTORY",
-                request.getTransactionType().name(),
-                request.getInventoryType().name(),
-                "Quantity : " + request.getQuantity()
-        );
+        if (authentication != null) {
+
+            auditService.createAudit(
+                    authentication,
+                    "INVENTORY",
+                    request.getTransactionType()
+                            .name(),
+                    request.getInventoryType()
+                            .name(),
+                    "Quantity : "
+                            + request.getQuantity()
+            );
+        }
 
         return mapToResponse(saved);
     }
 
-    public List<InventoryTransactionResponse> getAllTransactions() {
+    public List<InventoryTransactionResponse>
+    getAllTransactions() {
 
         return repository.findAll()
                 .stream()
@@ -76,12 +95,16 @@ public class InventoryTransactionService {
                 .toList();
     }
 
-    private InventoryTransactionResponse mapToResponse(
+    private InventoryTransactionResponse
+    mapToResponse(
             InventoryTransaction transaction
     ) {
 
-        return InventoryTransactionResponse.builder()
-                .id(transaction.getId())
+        return InventoryTransactionResponse
+                .builder()
+                .id(
+                        transaction.getId()
+                )
                 .inventoryType(
                         transaction.getInventoryType()
                 )
