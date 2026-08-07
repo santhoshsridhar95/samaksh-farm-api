@@ -24,6 +24,10 @@ public class SecurityConfig {
 
     private static final String FARM_MANAGER = "FARM_MANAGER";
 
+    private static final String SALES_ADMIN = "SALES_ADMIN";
+
+    private static final String SALES_EMPLOYEE = "SALES_EMPLOYEE";
+
     private static final String LABOUR = "LABOUR";
 
     private static final String SALES_USER = "SALES_USER";
@@ -39,15 +43,25 @@ public class SecurityConfig {
             FARM_MANAGER
     };
 
+    private static final String[] AUDIT_ROLES = {
+            SUPER_ADMIN,
+            FARM_MANAGER,
+            SALES_ADMIN
+    };
+
     private static final String[] SALES_OPERATIONS = {
             SUPER_ADMIN,
             FARM_MANAGER,
+            SALES_ADMIN,
+            SALES_EMPLOYEE,
             SALES_USER
     };
 
     private static final String[] DASHBOARD_ROLES = {
             SUPER_ADMIN,
             FARM_MANAGER,
+            SALES_ADMIN,
+            SALES_EMPLOYEE,
             SALES_USER
     };
 
@@ -74,7 +88,9 @@ public class SecurityConfig {
 
                                 // Public bootstrap APIs
                                 .requestMatchers(
-                                        "/api/auth/login"
+                                        "/api/auth/login",
+                                        "/api/auth/signup",
+                                        "/api/auth/forgot-password"
 
                                 ).permitAll()
 
@@ -92,8 +108,11 @@ public class SecurityConfig {
                                 .requestMatchers("/api/users/**")
                                 .hasRole(SUPER_ADMIN)
 
+                                .requestMatchers("/api/entitlements/**")
+                                .authenticated()
+
                                 .requestMatchers("/api/audit/**")
-                                .hasAnyRole(FARM_MANAGEMENT)
+                                .hasAnyRole(AUDIT_ROLES)
 
                                 // Dashboards and analytics
                                 .requestMatchers(

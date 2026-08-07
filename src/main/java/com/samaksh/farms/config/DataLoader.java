@@ -1,6 +1,10 @@
 package com.samaksh.farms.config;
 
 import com.samaksh.farms.enums.Role;
+import com.samaksh.farms.enums.ApprovalStatus;
+import com.samaksh.farms.entitlement.entity.Entitlement;
+import com.samaksh.farms.entitlement.repo.EntitlementRepository;
+import com.samaksh.farms.entitlement.service.EntitlementService;
 import com.samaksh.farms.user.entity.User;
 import com.samaksh.farms.user.repo.UserRepository;
 import org.slf4j.Logger;
@@ -23,6 +27,8 @@ public class DataLoader implements CommandLineRunner {
 
     private final PasswordEncoder passwordEncoder;
 
+    private final EntitlementRepository entitlementRepository;
+
     @Value("${app.bootstrap.admin.email:}")
     private String adminEmail;
 
@@ -34,10 +40,12 @@ public class DataLoader implements CommandLineRunner {
 
     public DataLoader(
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            EntitlementRepository entitlementRepository
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.entitlementRepository = entitlementRepository;
     }
 
     @Override
@@ -74,6 +82,10 @@ public class DataLoader implements CommandLineRunner {
 
             admin.setActive(true);
 
+            admin.setApprovalStatus(ApprovalStatus.APPROVED);
+
+            admin.setApprovedAt(LocalDateTime.now());
+
             admin.setCreatedAt(
                     LocalDateTime.now()
             );
@@ -85,5 +97,56 @@ public class DataLoader implements CommandLineRunner {
                     admin.getEmail()
             );
         }
+
+        seedEntitlement(
+                Role.SALES_ADMIN,
+                EntitlementService.MANAGE_SHOPS
+        );
+        seedEntitlement(
+                Role.SALES_ADMIN,
+                EntitlementService.CREATE_DELIVERY
+        );
+        seedEntitlement(
+                Role.SALES_ADMIN,
+                EntitlementService.VIEW_LEDGER
+        );
+        seedEntitlement(
+                Role.SALES_ADMIN,
+                EntitlementService.VIEW_CONFIDENTIAL
+        );
+        seedEntitlement(
+                Role.SALES_EMPLOYEE,
+                EntitlementService.CREATE_DELIVERY
+        );
+        seedEntitlement(
+                Role.SALES_USER,
+                EntitlementService.CREATE_DELIVERY
+        );
+        seedEntitlement(
+                Role.SALES_USER,
+                EntitlementService.VIEW_LEDGER
+        );
+    }
+
+    private void seedEntitlement(
+            Role role,
+            String permissionKey
+    ) {
+
+        if (entitlementRepository.existsByRoleAndPermissionKey(
+                role,
+                permissionKey
+        )) {
+
+            return;
+        }
+
+        entitlementRepository.save(
+                Entitlement.builder()
+                        .role(role)
+                        .permissionKey(permissionKey)
+                        .enabled(true)
+                        .build()
+        );
     }
 }

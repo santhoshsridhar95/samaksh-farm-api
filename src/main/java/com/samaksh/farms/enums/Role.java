@@ -6,6 +6,10 @@ public enum Role {
 
     FARM_MANAGER,
 
+    SALES_ADMIN,
+
+    SALES_EMPLOYEE,
+
     LABOUR,
 
     SALES_USER

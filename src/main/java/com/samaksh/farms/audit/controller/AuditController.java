@@ -18,7 +18,7 @@ public class AuditController {
 
     @GetMapping
     @PreAuthorize(
-            "hasAnyRole('SUPER_ADMIN','FARM_MANAGER')"
+            "hasAnyRole('SUPER_ADMIN','FARM_MANAGER','SALES_ADMIN')"
     )
     public ApiResponse<List<AuditResponse>>
     getAuditLogs() {
@@ -28,7 +28,7 @@ public class AuditController {
                 .success(true)
                 .message("Audit logs fetched successfully")
                 .data(
-                        auditService.getAuditLogs()
+                        auditService.getAuditLogsNewestFirst()
                 )
                 .build();
     }

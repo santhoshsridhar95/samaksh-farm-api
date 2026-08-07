@@ -13,6 +13,18 @@ public interface UserRepository
             String email
     );
 
+    Optional<User> findByPhoneNumber(
+            String phoneNumber
+    );
+
+    boolean existsByEmail(
+            String email
+    );
+
+    boolean existsByPhoneNumber(
+            String phoneNumber
+    );
+
     long countByRoleAndActiveTrue(
             Role role
     );

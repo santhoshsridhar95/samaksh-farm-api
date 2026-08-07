@@ -4,6 +4,7 @@ import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
+import com.samaksh.farms.enums.ExchangeType;
 import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.products.entity.Product;
 import com.samaksh.farms.products.repo.ProductRepository;
@@ -56,25 +57,74 @@ public class SaleService {
                         )
                 );
 
+        double quantity =
+                request.getQuantity() == null
+                        ? 0
+                        : request.getQuantity();
+
+        double unitPrice =
+                request.getUnitPrice() == null
+                        ? 0
+                        : request.getUnitPrice();
+
         double totalAmount =
-                request.getQuantity()
-                        * request.getUnitPrice();
+                quantity * unitPrice;
+
+        double amountCollected =
+                request.getAmountCollected() == null
+                        ? 0
+                        : request.getAmountCollected();
+
+        double pendingAmount =
+                totalAmount - amountCollected;
+
+        PaymentStatus paymentStatus =
+                request.getPaymentStatus() == null
+                        ? resolvePaymentStatus(
+                                totalAmount,
+                                amountCollected
+                        )
+                        : request.getPaymentStatus();
 
         Sale sale =
                 Sale.builder()
                         .customer(customer)
                         .product(product)
                         .quantity(
-                                request.getQuantity()
+                                quantity
                         )
                         .unitPrice(
-                                request.getUnitPrice()
+                                unitPrice
                         )
                         .totalAmount(
                                 totalAmount
                         )
+                        .amountCollected(
+                                amountCollected
+                        )
+                        .pendingAmount(
+                                pendingAmount
+                        )
+                        .shopkeeperSellingPrice(
+                                request.getShopkeeperSellingPrice()
+                        )
+                        .exchangeType(
+                                request.getExchangeType() == null
+                                        ? ExchangeType.NONE
+                                        : request.getExchangeType()
+                        )
+                        .exchangeBoxes(
+                                request.getExchangeBoxes() == null
+                                        ? 0
+                                        : request.getExchangeBoxes()
+                        )
+                        .returnedBoxes(
+                                request.getReturnedBoxes() == null
+                                        ? 0
+                                        : request.getReturnedBoxes()
+                        )
                         .paymentStatus(
-                                request.getPaymentStatus()
+                                paymentStatus
                         )
                         .remarks(
                                 request.getRemarks()
@@ -181,6 +231,25 @@ public class SaleService {
                 .build();
     }
 
+    private PaymentStatus resolvePaymentStatus(
+            double totalAmount,
+            double amountCollected
+    ) {
+
+        if (amountCollected >= totalAmount &&
+                totalAmount > 0) {
+
+            return PaymentStatus.PAID;
+        }
+
+        if (amountCollected > 0) {
+
+            return PaymentStatus.PARTIAL;
+        }
+
+        return PaymentStatus.PENDING;
+    }
+
     private SaleResponse mapToResponse(
             Sale sale
     ) {
@@ -189,9 +258,32 @@ public class SaleService {
                 .id(
                         sale.getId()
                 )
+                .customerId(
+                        sale.getCustomer()
+                                .getId()
+                )
                 .customerName(
                         sale.getCustomer()
                                 .getCustomerName()
+                )
+                .shopCategory(
+                        sale.getCustomer()
+                                .getShopCategory()
+                )
+                .location(
+                        sale.getCustomer()
+                                .getLocation() == null
+                                ? "R.T. Nagar"
+                                : sale.getCustomer()
+                                .getLocation()
+                )
+                .minimumBoxesPerDay(
+                        sale.getCustomer()
+                                .getMinimumBoxesPerDay()
+                )
+                .productId(
+                        sale.getProduct()
+                                .getId()
                 )
                 .productName(
                         sale.getProduct()
@@ -206,11 +298,32 @@ public class SaleService {
                 .totalAmount(
                         sale.getTotalAmount()
                 )
+                .amountCollected(
+                        sale.getAmountCollected()
+                )
+                .pendingAmount(
+                        sale.getPendingAmount()
+                )
+                .shopkeeperSellingPrice(
+                        sale.getShopkeeperSellingPrice()
+                )
+                .exchangeType(
+                        sale.getExchangeType()
+                )
+                .exchangeBoxes(
+                        sale.getExchangeBoxes()
+                )
+                .returnedBoxes(
+                        sale.getReturnedBoxes()
+                )
                 .paymentStatus(
                         sale.getPaymentStatus()
                 )
                 .remarks(
                         sale.getRemarks()
+                )
+                .saleDate(
+                        sale.getSaleDate()
                 )
                 .build();
     }

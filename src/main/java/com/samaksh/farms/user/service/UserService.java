@@ -2,7 +2,9 @@ package com.samaksh.farms.user.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
+import com.samaksh.farms.user.dto.ApproveUserRequest;
 import com.samaksh.farms.user.dto.ChangeRoleRequest;
 import com.samaksh.farms.user.dto.ResetPasswordRequest;
 import com.samaksh.farms.user.dto.UserRequest;
@@ -32,6 +34,7 @@ public class UserService {
 
         return userRepository.findAll()
                 .stream()
+                .filter(user -> user.getApprovalStatus() != ApprovalStatus.DELETED)
                 .map(this::mapToUserResponse)
                 .toList();
     }
@@ -55,9 +58,26 @@ public class UserService {
             );
         }
 
+        String phoneNumber =
+                request.getPhoneNumber() == null
+                        ? null
+                        : request.getPhoneNumber()
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
+
+        if (phoneNumber != null &&
+                !phoneNumber.isBlank() &&
+                userRepository.existsByPhoneNumber(phoneNumber)) {
+
+            throw new RuntimeException(
+                    "Phone number already exists"
+            );
+        }
+
         User user = User.builder()
                 .name(request.getName())
                 .email(email)
+                .phoneNumber(phoneNumber)
                 .password(
                         passwordEncoder.encode(
                                 request.getPassword()
@@ -65,6 +85,8 @@ public class UserService {
                 )
                 .role(request.getRole())
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
+                .approvedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -77,6 +99,83 @@ public class UserService {
                 "CREATE_USER",
                 savedUser.getEmail(),
                 "User created"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
+    public UserResponse approveUser(
+            Long userId,
+            ApproveUserRequest request,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        user.setRole(
+                request.getRole() == null
+                        ? Role.SALES_EMPLOYEE
+                        : request.getRole()
+        );
+        user.setActive(
+                request.getActive() == null
+                        ? true
+                        : request.getActive()
+        );
+        user.setApprovalStatus(ApprovalStatus.APPROVED);
+        user.setApprovedAt(LocalDateTime.now());
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "APPROVE_USER",
+                savedUser.getEmail(),
+                "User approved"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
+    public UserResponse rejectUser(
+            Long userId,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        preventRemovingLastActiveSuperAdmin(user);
+
+        user.setActive(false);
+        user.setApprovalStatus(ApprovalStatus.REJECTED);
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "REJECT_USER",
+                savedUser.getEmail(),
+                "User rejected"
         );
 
         return mapToUserResponse(savedUser);
@@ -210,6 +309,9 @@ public class UserService {
                         request.getPassword()
                 )
         );
+        user.setActive(true);
+        user.setApprovalStatus(ApprovalStatus.APPROVED);
+        user.setApprovedAt(LocalDateTime.now());
 
         userRepository.save(user);
 
@@ -222,6 +324,45 @@ public class UserService {
         );
     }
 
+    public UserResponse softDeleteUser(
+            Long userId,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        preventSelfDisable(
+                user,
+                authentication
+        );
+
+        preventRemovingLastActiveSuperAdmin(user);
+
+        user.setActive(false);
+        user.setApprovalStatus(ApprovalStatus.DELETED);
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "DELETE_USER",
+                savedUser.getEmail(),
+                "User soft deleted"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
     private UserResponse mapToUserResponse(
             User user
     ) {
@@ -230,8 +371,14 @@ public class UserService {
                 .id(user.getId())
                 .name(user.getName())
                 .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole())
                 .active(user.getActive())
+                .approvalStatus(
+                        user.getApprovalStatus() == null
+                                ? ApprovalStatus.APPROVED
+                                : user.getApprovalStatus()
+                )
                 .build();
     }
 

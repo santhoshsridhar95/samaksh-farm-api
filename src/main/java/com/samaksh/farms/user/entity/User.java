@@ -1,6 +1,7 @@
 package com.samaksh.farms.user.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
@@ -30,8 +31,10 @@ public class User {
     )
     private String email;
 
+    @Column(unique = true)
+    private String phoneNumber;
+
     @JsonIgnore
-    @Column(nullable = false)
     private String password;
 
     @Enumerated(EnumType.STRING)
@@ -40,6 +43,11 @@ public class User {
 
     @Column(nullable = false)
     private Boolean active;
+
+    @Enumerated(EnumType.STRING)
+    private ApprovalStatus approvalStatus;
+
+    private LocalDateTime approvedAt;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

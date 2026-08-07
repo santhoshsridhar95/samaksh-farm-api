@@ -5,6 +5,7 @@ import com.samaksh.farms.audit.entity.AuditLog;
 import com.samaksh.farms.audit.repo.AuditLogRepository;
 import com.samaksh.farms.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
@@ -27,6 +28,8 @@ public class AuditService {
 
         Long userId = 0L;
 
+        String userName = "SYSTEM";
+
         String userEmail = "SYSTEM";
 
         if (authentication != null
@@ -35,6 +38,8 @@ public class AuditService {
 
             userId = user.getId();
 
+            userName = user.getName();
+
             userEmail = user.getEmail();
         }
 
@@ -42,6 +47,9 @@ public class AuditService {
                 AuditLog.builder()
                         .userId(
                                 userId
+                        )
+                        .userName(
+                                userName
                         )
                         .userEmail(
                                 userEmail
@@ -76,6 +84,17 @@ public class AuditService {
                 .toList();
     }
 
+    public List<AuditResponse> getAuditLogsNewestFirst() {
+
+        return auditLogRepository.findAll(
+                        Sort.by("createdAt")
+                                .descending()
+                )
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
+    }
+
     private AuditResponse mapToResponse(
             AuditLog auditLog
     ) {
@@ -83,6 +102,12 @@ public class AuditService {
         return AuditResponse.builder()
                 .id(
                         auditLog.getId()
+                )
+                .userId(
+                        auditLog.getUserId()
+                )
+                .userName(
+                        auditLog.getUserName()
                 )
                 .userEmail(
                         auditLog.getUserEmail()
