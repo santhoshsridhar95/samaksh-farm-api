@@ -5,6 +5,7 @@ import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
 import com.samaksh.farms.user.dto.ApproveUserRequest;
+import com.samaksh.farms.user.dto.ChangePermissionsRequest;
 import com.samaksh.farms.user.dto.ChangeRoleRequest;
 import com.samaksh.farms.user.dto.ResetPasswordRequest;
 import com.samaksh.farms.user.dto.UserRequest;
@@ -17,8 +18,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -84,6 +87,9 @@ public class UserService {
                         )
                 )
                 .role(request.getRole())
+                .emailVerified(true)
+                .authProvider("SUPER_ADMIN")
+                .extraPermissions(cleanPermissions(request.getExtraPermissions()))
                 .active(true)
                 .approvalStatus(ApprovalStatus.APPROVED)
                 .approvedAt(LocalDateTime.now())
@@ -363,6 +369,42 @@ public class UserService {
         return mapToUserResponse(savedUser);
     }
 
+    public UserResponse changePermissions(
+            Long userId,
+            ChangePermissionsRequest request,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        user.setExtraPermissions(
+                cleanPermissions(
+                        request.getExtraPermissions()
+                )
+        );
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "CHANGE_ENTITLEMENTS",
+                savedUser.getEmail(),
+                "Extra entitlements changed"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
     private UserResponse mapToUserResponse(
             User user
     ) {
@@ -379,7 +421,32 @@ public class UserService {
                                 ? ApprovalStatus.APPROVED
                                 : user.getApprovalStatus()
                 )
+                .emailVerified(
+                        Boolean.TRUE.equals(user.getEmailVerified())
+                )
+                .extraPermissions(
+                        cleanPermissions(user.getExtraPermissions())
+                )
                 .build();
+    }
+
+    private List<String> cleanPermissions(
+            List<String> permissions
+    ) {
+
+        if (permissions == null) {
+            return List.of();
+        }
+
+        return List.copyOf(
+                new LinkedHashSet<>(
+                        permissions.stream()
+                                .filter(Objects::nonNull)
+                                .map(String::trim)
+                                .filter(permission -> !permission.isBlank())
+                                .toList()
+                )
+        );
     }
 
     private void preventSelfDisable(

@@ -9,7 +9,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -33,9 +35,25 @@ public class EntitlementService {
         return EntitlementResponse.builder()
                 .role(user.getRole())
                 .permissions(
-                        permissionsForRole(user.getRole())
+                        permissionsForUser(user)
                 )
                 .build();
+    }
+
+    public List<String> permissionsForUser(
+            User user
+    ) {
+
+        Set<String> permissions =
+                new LinkedHashSet<>(
+                        permissionsForRole(user.getRole())
+                );
+
+        if (user.getExtraPermissions() != null) {
+            permissions.addAll(user.getExtraPermissions());
+        }
+
+        return List.copyOf(permissions);
     }
 
     public List<String> permissionsForRole(

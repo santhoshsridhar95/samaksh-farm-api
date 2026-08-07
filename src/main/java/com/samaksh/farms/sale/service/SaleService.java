@@ -70,18 +70,41 @@ public class SaleService {
         double totalAmount =
                 quantity * unitPrice;
 
+        ExchangeType exchangeType =
+                request.getExchangeType() == null
+                        ? ExchangeType.NONE
+                        : request.getExchangeType();
+
+        double exchangeBoxes =
+                request.getExchangeBoxes() == null
+                        ? 0
+                        : request.getExchangeBoxes();
+
+        double exchangeCredit =
+                exchangeCredit(
+                        exchangeType,
+                        exchangeBoxes,
+                        unitPrice
+                );
+
+        double billableAmount =
+                Math.max(
+                        0,
+                        totalAmount - exchangeCredit
+                );
+
         double amountCollected =
                 request.getAmountCollected() == null
                         ? 0
                         : request.getAmountCollected();
 
         double pendingAmount =
-                totalAmount - amountCollected;
+                billableAmount - amountCollected;
 
         PaymentStatus paymentStatus =
                 request.getPaymentStatus() == null
                         ? resolvePaymentStatus(
-                                totalAmount,
+                                billableAmount,
                                 amountCollected
                         )
                         : request.getPaymentStatus();
@@ -97,7 +120,7 @@ public class SaleService {
                                 unitPrice
                         )
                         .totalAmount(
-                                totalAmount
+                                billableAmount
                         )
                         .amountCollected(
                                 amountCollected
@@ -109,14 +132,10 @@ public class SaleService {
                                 request.getShopkeeperSellingPrice()
                         )
                         .exchangeType(
-                                request.getExchangeType() == null
-                                        ? ExchangeType.NONE
-                                        : request.getExchangeType()
+                                exchangeType
                         )
                         .exchangeBoxes(
-                                request.getExchangeBoxes() == null
-                                        ? 0
-                                        : request.getExchangeBoxes()
+                                exchangeBoxes
                         )
                         .returnedBoxes(
                                 request.getReturnedBoxes() == null
@@ -145,7 +164,7 @@ public class SaleService {
                 "CREATE_SALE",
                 savedSale.getId().toString(),
                 "Sale Amount : "
-                        + totalAmount
+                        + billableAmount
         );
 
         return mapToResponse(
@@ -248,6 +267,31 @@ public class SaleService {
         }
 
         return PaymentStatus.PENDING;
+    }
+
+    private double exchangeCredit(
+            ExchangeType exchangeType,
+            double exchangeBoxes,
+            double unitPrice
+    ) {
+
+        if (exchangeBoxes <= 0 ||
+                unitPrice <= 0) {
+
+            return 0;
+        }
+
+        if (exchangeType == ExchangeType.ONE_ON_ONE) {
+
+            return exchangeBoxes * unitPrice;
+        }
+
+        if (exchangeType == ExchangeType.TWO_ON_ONE) {
+
+            return exchangeBoxes * unitPrice * 0.5;
+        }
+
+        return 0;
     }
 
     private SaleResponse mapToResponse(

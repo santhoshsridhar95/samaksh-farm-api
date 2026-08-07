@@ -8,6 +8,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
+
 @Data
 public class UserRequest {
 
@@ -30,4 +32,6 @@ public class UserRequest {
 
     @NotNull
     private Role role;
+
+    private List<String> extraPermissions;
 }

@@ -175,6 +175,28 @@ public class UserController {
                 .build();
     }
 
+    @PutMapping("/{id}/permissions")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<UserResponse> changePermissions(
+            @PathVariable Long id,
+            @RequestBody ChangePermissionsRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<UserResponse>builder()
+                .success(true)
+                .message("Entitlements updated successfully")
+                .data(
+                        userService.changePermissions(
+                                id,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<UserResponse> deleteUser(

@@ -78,6 +78,7 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
                 ALTER TABLE users
                 ADD CONSTRAINT users_approval_status_check
                 CHECK (approval_status IS NULL OR approval_status IN (
+                    'EMAIL_VERIFICATION_PENDING',
                     'PENDING',
                     'APPROVED',
                     'REJECTED',

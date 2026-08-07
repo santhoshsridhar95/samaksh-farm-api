@@ -5,6 +5,8 @@ import com.samaksh.farms.enums.Role;
 import lombok.Builder;
 import lombok.Data;
 
+import java.util.List;
+
 @Data
 @Builder
 public class UserResponse {
@@ -22,4 +24,8 @@ public class UserResponse {
     private Boolean active;
 
     private ApprovalStatus approvalStatus;
+
+    private Boolean emailVerified;
+
+    private List<String> extraPermissions;
 }

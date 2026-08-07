@@ -6,7 +6,9 @@ import com.samaksh.farms.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.security.Principal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -15,8 +17,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = "password")
-public class User {
+@ToString(exclude = {
+        "password",
+        "extraPermissions"
+})
+public class User implements Principal {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -36,6 +41,22 @@ public class User {
 
     @JsonIgnore
     private String password;
+
+    private Boolean emailVerified;
+
+    private String emailVerificationOtp;
+
+    private LocalDateTime emailVerificationExpiresAt;
+
+    private String authProvider;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "user_extra_permissions",
+            joinColumns = @JoinColumn(name = "user_id")
+    )
+    @Column(name = "permission_key")
+    private List<String> extraPermissions;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
