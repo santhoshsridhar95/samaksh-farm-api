@@ -46,6 +46,8 @@ public class User implements Principal {
 
     private String emailVerificationOtp;
 
+    private String emailVerificationToken;
+
     private LocalDateTime emailVerificationExpiresAt;
 
     private String authProvider;

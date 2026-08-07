@@ -17,6 +17,10 @@ public interface UserRepository
             String phoneNumber
     );
 
+    Optional<User> findByEmailVerificationToken(
+            String emailVerificationToken
+    );
+
     boolean existsByEmail(
             String email
     );

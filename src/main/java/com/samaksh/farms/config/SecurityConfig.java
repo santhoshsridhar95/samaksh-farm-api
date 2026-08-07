@@ -90,7 +90,9 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         "/api/auth/login",
                                         "/api/auth/signup",
-                                        "/api/auth/forgot-password"
+                                        "/api/auth/forgot-password",
+                                        "/api/auth/verify-email",
+                                        "/api/auth/google"
 
                                 ).permitAll()
 
