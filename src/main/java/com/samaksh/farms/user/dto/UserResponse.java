@@ -21,6 +21,8 @@ public class UserResponse {
 
     private Role role;
 
+    private List<Role> roles;
+
     private Boolean active;
 
     private ApprovalStatus approvalStatus;

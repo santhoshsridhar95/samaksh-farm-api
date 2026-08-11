@@ -49,6 +49,11 @@ public class EntitlementService {
                         permissionsForRole(user.getRole())
                 );
 
+        if (user.getExtraRoles() != null) {
+            user.getExtraRoles()
+                    .forEach(role -> permissions.addAll(permissionsForRole(role)));
+        }
+
         if (user.getExtraPermissions() != null) {
             permissions.addAll(user.getExtraPermissions());
         }

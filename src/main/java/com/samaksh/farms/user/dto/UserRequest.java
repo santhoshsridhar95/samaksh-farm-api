@@ -33,5 +33,7 @@ public class UserRequest {
     @NotNull
     private Role role;
 
+    private List<Role> roles;
+
     private List<String> extraPermissions;
 }

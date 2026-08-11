@@ -92,7 +92,8 @@ public class SecurityConfig {
                                         "/api/auth/signup",
                                         "/api/auth/forgot-password",
                                         "/api/auth/verify-email",
-                                        "/api/auth/google"
+                                        "/api/auth/google",
+                                        "/api/health/ping"
 
                                 ).permitAll()
 

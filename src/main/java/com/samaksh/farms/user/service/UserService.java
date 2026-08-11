@@ -86,7 +86,8 @@ public class UserService {
                                 request.getPassword()
                         )
                 )
-                .role(request.getRole())
+                .role(primaryRole(request.getRoles(), request.getRole()))
+                .extraRoles(extraRoles(request.getRoles(), request.getRole()))
                 .emailVerified(true)
                 .authProvider("SUPER_ADMIN")
                 .extraPermissions(cleanPermissions(request.getExtraPermissions()))
@@ -126,10 +127,14 @@ public class UserService {
                                         )
                         );
 
-        user.setRole(
-                request.getRole() == null
-                        ? Role.SALES_EMPLOYEE
-                        : request.getRole()
+        List<Role> roles =
+                cleanRoles(request.getRoles(), request.getRole());
+
+        user.setRole(roles.getFirst());
+        user.setExtraRoles(
+                roles.size() > 1
+                        ? List.copyOf(roles.subList(1, roles.size()))
+                        : List.of()
         );
         user.setActive(
                 request.getActive() == null
@@ -269,15 +274,23 @@ public class UserService {
                                         new ResourceNotFoundException(
                                                 "User",
                                                 userId
-                                        )
+                        )
                         );
+
+        List<Role> roles =
+                cleanRoles(request.getRoles(), request.getRole());
 
         preventRemovingLastActiveSuperAdmin(
                 user,
-                request.getRole()
+                roles
         );
 
-        user.setRole(request.getRole());
+        user.setRole(roles.getFirst());
+        user.setExtraRoles(
+                roles.size() > 1
+                        ? List.copyOf(roles.subList(1, roles.size()))
+                        : List.of()
+        );
 
         User savedUser =
                 userRepository.save(user);
@@ -288,7 +301,7 @@ public class UserService {
                 "CHANGE_ROLE",
                 savedUser.getEmail(),
                 "Role changed to "
-                        + request.getRole()
+                        + roles
         );
 
         return mapToUserResponse(savedUser);
@@ -415,6 +428,7 @@ public class UserService {
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole())
+                .roles(allRoles(user))
                 .active(user.getActive())
                 .approvalStatus(
                         user.getApprovalStatus() == null
@@ -447,6 +461,72 @@ public class UserService {
                                 .toList()
                 )
         );
+    }
+
+    private Role primaryRole(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        return cleanRoles(roles, fallback).getFirst();
+    }
+
+    private List<Role> extraRoles(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        List<Role> cleanRoles =
+                cleanRoles(roles, fallback);
+
+        return cleanRoles.size() > 1
+                ? List.copyOf(cleanRoles.subList(1, cleanRoles.size()))
+                : List.of();
+    }
+
+    private List<Role> cleanRoles(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        LinkedHashSet<Role> result =
+                new LinkedHashSet<>();
+
+        if (roles != null) {
+            result.addAll(
+                    roles.stream()
+                            .filter(Objects::nonNull)
+                            .toList()
+            );
+        }
+
+        if (result.isEmpty()) {
+            result.add(
+                    fallback == null
+                            ? Role.SALES_EMPLOYEE
+                            : fallback
+            );
+        }
+
+        return List.copyOf(result);
+    }
+
+    private List<Role> allRoles(
+            User user
+    ) {
+
+        LinkedHashSet<Role> roles =
+                new LinkedHashSet<>();
+
+        if (user.getRole() != null) {
+            roles.add(user.getRole());
+        }
+
+        if (user.getExtraRoles() != null) {
+            roles.addAll(user.getExtraRoles());
+        }
+
+        return List.copyOf(roles);
     }
 
     private void preventSelfDisable(
@@ -491,6 +571,31 @@ public class UserService {
                 targetUser.getRole() == Role.SUPER_ADMIN
                         && targetUser.getActive()
                         && nextRole != Role.SUPER_ADMIN;
+
+        if (removesSuperAdmin
+                && userRepository.countByRoleAndActiveTrue(
+                Role.SUPER_ADMIN
+        ) <= 1) {
+
+            throw new IllegalStateException(
+                    "At least one active SUPER_ADMIN is required"
+            );
+        }
+    }
+
+    private void preventRemovingLastActiveSuperAdmin(
+            User targetUser,
+            List<Role> nextRoles
+    ) {
+
+        boolean currentlySuperAdmin =
+                allRoles(targetUser).contains(Role.SUPER_ADMIN)
+                        && targetUser.getActive();
+
+        boolean removesSuperAdmin =
+                currentlySuperAdmin &&
+                        (nextRoles == null ||
+                                !nextRoles.contains(Role.SUPER_ADMIN));
 
         if (removesSuperAdmin
                 && userRepository.countByRoleAndActiveTrue(

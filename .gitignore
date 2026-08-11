@@ -1,5 +1,13 @@
 HELP.md
 target/
+.env
+.env.dev
+.env.prod
+.env.local
+.env.*.local
+*.log
+hs_err_pid*.log
+replay_pid*.log
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/

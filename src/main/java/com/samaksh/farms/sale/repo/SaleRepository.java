@@ -6,6 +6,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
+
 public interface SaleRepository
         extends JpaRepository<Sale, Long> {
 
@@ -23,5 +26,10 @@ public interface SaleRepository
             Long customerId,
             PaymentStatus paymentStatus,
             Pageable pageable
+    );
+
+    List<Sale> findByCustomerIdAndPaymentStatusInOrderBySaleDateAsc(
+            Long customerId,
+            Collection<PaymentStatus> paymentStatuses
     );
 }
