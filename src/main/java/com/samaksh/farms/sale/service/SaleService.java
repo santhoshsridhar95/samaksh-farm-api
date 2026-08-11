@@ -9,16 +9,19 @@ import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.products.entity.Product;
 import com.samaksh.farms.products.repo.ProductRepository;
 import com.samaksh.farms.sale.dto.PagedResponse;
+import com.samaksh.farms.sale.dto.SalePaymentUpdateRequest;
 import com.samaksh.farms.sale.dto.SaleRequest;
 import com.samaksh.farms.sale.dto.SaleResponse;
 import com.samaksh.farms.sale.entity.Sale;
 import com.samaksh.farms.sale.repo.SaleRepository;
+import com.samaksh.farms.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -93,21 +96,49 @@ public class SaleService {
                         totalAmount - exchangeCredit
                 );
 
-        double amountCollected =
+        double receivedToday =
                 request.getAmountCollected() == null
                         ? 0
                         : request.getAmountCollected();
 
+        if (receivedToday < 0) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be negative"
+            );
+        }
+
+        double outstandingBeforeSale =
+                customerPendingBalance(
+                        customer.getId()
+                );
+
+        if (receivedToday > outstandingBeforeSale + billableAmount) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be greater than shop outstanding plus today's bill"
+            );
+        }
+
+        double remainingCollection =
+                applyCollectionToPreviousSales(
+                        customer.getId(),
+                        receivedToday,
+                        authentication
+                );
+
+        double amountAppliedToCurrentSale =
+                Math.min(
+                        billableAmount,
+                        remainingCollection
+                );
+
         double pendingAmount =
-                billableAmount - amountCollected;
+                billableAmount - amountAppliedToCurrentSale;
 
         PaymentStatus paymentStatus =
-                request.getPaymentStatus() == null
-                        ? resolvePaymentStatus(
-                                billableAmount,
-                                amountCollected
-                        )
-                        : request.getPaymentStatus();
+                resolvePaymentStatus(
+                        billableAmount,
+                        amountAppliedToCurrentSale
+                );
 
         Sale sale =
                 Sale.builder()
@@ -123,7 +154,7 @@ public class SaleService {
                                 billableAmount
                         )
                         .amountCollected(
-                                amountCollected
+                                amountAppliedToCurrentSale
                         )
                         .pendingAmount(
                                 pendingAmount
@@ -148,6 +179,21 @@ public class SaleService {
                         .remarks(
                                 request.getRemarks()
                         )
+                        .createdByUserId(
+                                currentUserId(
+                                        authentication
+                                )
+                        )
+                        .createdByName(
+                                currentUserName(
+                                        authentication
+                                )
+                        )
+                        .createdByEmail(
+                                currentUserEmail(
+                                        authentication
+                                )
+                        )
                         .saleDate(
                                 LocalDateTime.now()
                         )
@@ -165,6 +211,10 @@ public class SaleService {
                 savedSale.getId().toString(),
                 "Sale Amount : "
                         + billableAmount
+                        + ", received today Rs. "
+                        + receivedToday
+                        + ", applied to this sale Rs. "
+                        + amountAppliedToCurrentSale
         );
 
         return mapToResponse(
@@ -250,6 +300,132 @@ public class SaleService {
                 .build();
     }
 
+    public SaleResponse updatePayment(
+            Long saleId,
+            SalePaymentUpdateRequest request,
+            Authentication authentication
+    ) {
+
+        Sale sale =
+                saleRepository.findById(
+                        saleId
+                ).orElseThrow(
+                        () -> new ResourceNotFoundException(
+                                "Sale",
+                                saleId
+                        )
+                );
+
+        double totalAmount =
+                saleTotal(
+                        sale
+                );
+
+        double newAmountCollected =
+                request.getAmountCollected() == null
+                        ? saleCollected(
+                                sale
+                        )
+                        : request.getAmountCollected();
+
+        if (newAmountCollected < 0) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be negative"
+            );
+        }
+
+        if (newAmountCollected > totalAmount) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be greater than total amount"
+            );
+        }
+
+        double oldAmountCollected =
+                saleCollected(
+                        sale
+                );
+
+        double oldPendingAmount =
+                salePending(
+                        sale
+                );
+
+        PaymentStatus oldPaymentStatus =
+                sale.getPaymentStatus();
+
+        double newPendingAmount =
+                Math.max(
+                        0,
+                        totalAmount - newAmountCollected
+                );
+
+        PaymentStatus newPaymentStatus =
+                resolvePaymentStatus(
+                        totalAmount,
+                        newAmountCollected
+                );
+
+        sale.setAmountCollected(
+                newAmountCollected
+        );
+        sale.setPendingAmount(
+                newPendingAmount
+        );
+        sale.setPaymentStatus(
+                newPaymentStatus
+        );
+        applyUpdatedBy(
+                sale,
+                authentication
+        );
+
+        if (request.getRemarks() != null &&
+                !request.getRemarks().isBlank()) {
+
+            String existingRemarks =
+                    sale.getRemarks() == null
+                            ? ""
+                            : sale.getRemarks();
+
+            sale.setRemarks(
+                    existingRemarks.isBlank()
+                            ? request.getRemarks()
+                            : existingRemarks + " | Payment: "
+                                    + request.getRemarks()
+            );
+        }
+
+        Sale savedSale =
+                saleRepository.save(
+                        sale
+                );
+
+        auditService.createAudit(
+                authentication,
+                "SALE",
+                "UPDATE_PAYMENT",
+                savedSale.getId().toString(),
+                "Payment changed for "
+                        + savedSale.getCustomer().getCustomerName()
+                        + ": collected Rs. "
+                        + oldAmountCollected
+                        + " -> Rs. "
+                        + newAmountCollected
+                        + ", pending Rs. "
+                        + oldPendingAmount
+                        + " -> Rs. "
+                        + newPendingAmount
+                        + ", status "
+                        + oldPaymentStatus
+                        + " -> "
+                        + newPaymentStatus
+        );
+
+        return mapToResponse(
+                savedSale
+        );
+    }
+
     private PaymentStatus resolvePaymentStatus(
             double totalAmount,
             double amountCollected
@@ -267,6 +443,138 @@ public class SaleService {
         }
 
         return PaymentStatus.PENDING;
+    }
+
+    private double applyCollectionToPreviousSales(
+            Long customerId,
+            double collectionAmount,
+            Authentication authentication
+    ) {
+
+        if (collectionAmount <= 0) {
+            return 0;
+        }
+
+        double remainingCollection =
+                collectionAmount;
+
+        List<Sale> unpaidSales =
+                saleRepository.findByCustomerIdAndPaymentStatusInOrderBySaleDateAsc(
+                        customerId,
+                        List.of(
+                                PaymentStatus.PENDING,
+                                PaymentStatus.PARTIAL
+                        )
+                );
+
+        for (Sale unpaidSale : unpaidSales) {
+
+            if (remainingCollection <= 0) {
+                break;
+            }
+
+            double pendingAmount =
+                    salePending(
+                            unpaidSale
+                    );
+
+            if (pendingAmount <= 0) {
+                continue;
+            }
+
+            double appliedAmount =
+                    Math.min(
+                            pendingAmount,
+                            remainingCollection
+                    );
+
+            double oldCollected =
+                    saleCollected(
+                            unpaidSale
+                    );
+
+            double oldPending =
+                    pendingAmount;
+
+            PaymentStatus oldStatus =
+                    unpaidSale.getPaymentStatus();
+
+            double newCollected =
+                    oldCollected + appliedAmount;
+
+            double newPending =
+                    Math.max(
+                            0,
+                            saleTotal(
+                                    unpaidSale
+                            ) - newCollected
+                    );
+
+            unpaidSale.setAmountCollected(
+                    newCollected
+            );
+            unpaidSale.setPendingAmount(
+                    newPending
+            );
+            unpaidSale.setPaymentStatus(
+                    resolvePaymentStatus(
+                            saleTotal(
+                                    unpaidSale
+                            ),
+                            newCollected
+                    )
+            );
+            applyUpdatedBy(
+                    unpaidSale,
+                    authentication
+            );
+
+            Sale savedSale =
+                    saleRepository.save(
+                            unpaidSale
+                    );
+
+            auditService.createAudit(
+                    authentication,
+                    "SALE",
+                    "APPLY_DELIVERY_COLLECTION",
+                    savedSale.getId().toString(),
+                    "Delivery collection applied to previous sale: Rs. "
+                            + appliedAmount
+                            + ", collected Rs. "
+                            + oldCollected
+                            + " -> Rs. "
+                            + newCollected
+                            + ", pending Rs. "
+                            + oldPending
+                            + " -> Rs. "
+                            + newPending
+                            + ", status "
+                            + oldStatus
+                            + " -> "
+                            + savedSale.getPaymentStatus()
+            );
+
+            remainingCollection -= appliedAmount;
+        }
+
+        return remainingCollection;
+    }
+
+    private double customerPendingBalance(
+            Long customerId
+    ) {
+
+        return saleRepository.findByCustomerIdAndPaymentStatusInOrderBySaleDateAsc(
+                        customerId,
+                        List.of(
+                                PaymentStatus.PENDING,
+                                PaymentStatus.PARTIAL
+                        )
+                )
+                .stream()
+                .mapToDouble(this::salePending)
+                .sum();
     }
 
     private double exchangeCredit(
@@ -292,6 +600,100 @@ public class SaleService {
         }
 
         return 0;
+    }
+
+    private double saleTotal(
+            Sale sale
+    ) {
+
+        return sale.getTotalAmount() == null
+                ? 0
+                : sale.getTotalAmount();
+    }
+
+    private double saleCollected(
+            Sale sale
+    ) {
+
+        return sale.getAmountCollected() == null
+                ? 0
+                : sale.getAmountCollected();
+    }
+
+    private double salePending(
+            Sale sale
+    ) {
+
+        if (sale.getPendingAmount() != null) {
+
+            return sale.getPendingAmount();
+        }
+
+        return saleTotal(sale) - saleCollected(sale);
+    }
+
+    private void applyUpdatedBy(
+            Sale sale,
+            Authentication authentication
+    ) {
+
+        sale.setUpdatedByUserId(
+                currentUserId(
+                        authentication
+                )
+        );
+        sale.setUpdatedByName(
+                currentUserName(
+                        authentication
+                )
+        );
+        sale.setUpdatedByEmail(
+                currentUserEmail(
+                        authentication
+                )
+        );
+        sale.setUpdatedAt(
+                LocalDateTime.now()
+        );
+    }
+
+    private Long currentUserId(
+            Authentication authentication
+    ) {
+
+        if (authentication != null &&
+                authentication.getPrincipal() instanceof User user) {
+
+            return user.getId();
+        }
+
+        return 0L;
+    }
+
+    private String currentUserName(
+            Authentication authentication
+    ) {
+
+        if (authentication != null &&
+                authentication.getPrincipal() instanceof User user) {
+
+            return user.getName();
+        }
+
+        return "SYSTEM";
+    }
+
+    private String currentUserEmail(
+            Authentication authentication
+    ) {
+
+        if (authentication != null &&
+                authentication.getPrincipal() instanceof User user) {
+
+            return user.getEmail();
+        }
+
+        return "SYSTEM";
     }
 
     private SaleResponse mapToResponse(
@@ -365,6 +767,27 @@ public class SaleService {
                 )
                 .remarks(
                         sale.getRemarks()
+                )
+                .createdByUserId(
+                        sale.getCreatedByUserId()
+                )
+                .createdByName(
+                        sale.getCreatedByName()
+                )
+                .createdByEmail(
+                        sale.getCreatedByEmail()
+                )
+                .updatedByUserId(
+                        sale.getUpdatedByUserId()
+                )
+                .updatedByName(
+                        sale.getUpdatedByName()
+                )
+                .updatedByEmail(
+                        sale.getUpdatedByEmail()
+                )
+                .updatedAt(
+                        sale.getUpdatedAt()
                 )
                 .saleDate(
                         sale.getSaleDate()

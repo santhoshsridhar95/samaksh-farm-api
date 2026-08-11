@@ -56,5 +56,19 @@ public class Sale {
 
     private String remarks;
 
+    private Long createdByUserId;
+
+    private String createdByName;
+
+    private String createdByEmail;
+
+    private Long updatedByUserId;
+
+    private String updatedByName;
+
+    private String updatedByEmail;
+
+    private LocalDateTime updatedAt;
+
     private LocalDateTime saleDate;
 }

@@ -19,6 +19,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -93,6 +95,9 @@ public class AuthService {
                 .token(token)
                 .role(
                         user.getRole().name()
+                )
+                .roles(
+                        roleNames(user)
                 )
                 .name(
                         user.getName()
@@ -274,6 +279,7 @@ public class AuthService {
                 .userId(user.getId())
                 .token(token)
                 .role(user.getRole().name())
+                .roles(roleNames(user))
                 .name(user.getName())
                 .active(user.getActive())
                 .build();
@@ -309,6 +315,9 @@ public class AuthService {
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole())
+                .roles(
+                        userRoles(user)
+                )
                 .active(user.getActive())
                 .approvalStatus(
                         user.getApprovalStatus() == null
@@ -368,6 +377,44 @@ public class AuthService {
         return String.valueOf(
                 ThreadLocalRandom.current().nextInt(100000, 1000000)
         );
+    }
+
+    private List<String> roleNames(
+            User user
+    ) {
+
+        LinkedHashSet<Role> roles =
+                new LinkedHashSet<>();
+
+        if (user.getRole() != null) {
+            roles.add(user.getRole());
+        }
+
+        if (user.getExtraRoles() != null) {
+            roles.addAll(user.getExtraRoles());
+        }
+
+        return roles.stream()
+                .map(Role::name)
+                .toList();
+    }
+
+    private List<Role> userRoles(
+            User user
+    ) {
+
+        LinkedHashSet<Role> roles =
+                new LinkedHashSet<>();
+
+        if (user.getRole() != null) {
+            roles.add(user.getRole());
+        }
+
+        if (user.getExtraRoles() != null) {
+            roles.addAll(user.getExtraRoles());
+        }
+
+        return List.copyOf(roles);
     }
 
     private String loginBlockedMessage(

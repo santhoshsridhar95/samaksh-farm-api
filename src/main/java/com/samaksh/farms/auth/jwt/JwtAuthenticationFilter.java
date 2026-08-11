@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @Component
@@ -94,12 +95,7 @@ public class JwtAuthenticationFilter
                     new UsernamePasswordAuthenticationToken(
                             user,
                             null,
-                            List.of(
-                                    new SimpleGrantedAuthority(
-                                            "ROLE_" +
-                                                    user.getRole().name()
-                                    )
-                            )
+                            authorities(user)
                     );
 
             SecurityContextHolder
@@ -111,6 +107,27 @@ public class JwtAuthenticationFilter
                 request,
                 response
         );
+    }
+
+    private List<SimpleGrantedAuthority> authorities(
+            User user
+    ) {
+
+        LinkedHashSet<String> roles =
+                new LinkedHashSet<>();
+
+        if (user.getRole() != null) {
+            roles.add(user.getRole().name());
+        }
+
+        if (user.getExtraRoles() != null) {
+            user.getExtraRoles()
+                    .forEach(role -> roles.add(role.name()));
+        }
+
+        return roles.stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role))
+                .toList();
     }
 
     private void writeUnauthorized(

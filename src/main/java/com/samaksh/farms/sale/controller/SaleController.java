@@ -3,6 +3,7 @@ package com.samaksh.farms.sale.controller;
 import com.samaksh.farms.common.dto.ApiResponse;
 import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.sale.dto.PagedResponse;
+import com.samaksh.farms.sale.dto.SalePaymentUpdateRequest;
 import com.samaksh.farms.sale.dto.SaleRequest;
 import com.samaksh.farms.sale.dto.SaleResponse;
 import com.samaksh.farms.sale.service.SaleService;
@@ -75,6 +76,29 @@ public class SaleController {
                                 size,
                                 customerId,
                                 paymentStatus
+                        )
+                )
+                .build();
+    }
+
+    @PutMapping("/{saleId}/payment")
+    public ApiResponse<SaleResponse> updatePayment(
+            @PathVariable Long saleId,
+            @RequestBody SalePaymentUpdateRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<SaleResponse>builder()
+                .success(true)
+                .message(
+                        "Payment updated successfully"
+                )
+                .data(
+                        saleService.updatePayment(
+                                saleId,
+                                request,
+                                authentication
                         )
                 )
                 .build();

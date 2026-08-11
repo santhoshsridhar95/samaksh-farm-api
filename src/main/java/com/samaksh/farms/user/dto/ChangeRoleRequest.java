@@ -1,12 +1,14 @@
 package com.samaksh.farms.user.dto;
 
 import com.samaksh.farms.enums.Role;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
+
+import java.util.List;
 
 @Data
 public class ChangeRoleRequest {
 
-    @NotNull
     private Role role;
+
+    private List<Role> roles;
 }

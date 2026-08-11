@@ -19,7 +19,8 @@ import java.util.List;
 @AllArgsConstructor
 @ToString(exclude = {
         "password",
-        "extraPermissions"
+        "extraPermissions",
+        "extraRoles"
 })
 public class User implements Principal {
 
@@ -63,6 +64,15 @@ public class User implements Principal {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "user_extra_roles",
+            joinColumns = @JoinColumn(name = "user_id")
+    )
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role")
+    private List<Role> extraRoles;
 
     @Column(nullable = false)
     private Boolean active;
