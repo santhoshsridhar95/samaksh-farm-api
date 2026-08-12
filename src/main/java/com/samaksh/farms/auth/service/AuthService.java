@@ -13,6 +13,7 @@ import com.samaksh.farms.user.dto.UserResponse;
 import com.samaksh.farms.user.entity.User;
 import com.samaksh.farms.user.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,6 +40,9 @@ public class AuthService {
 
     private final GoogleTokenVerifier googleTokenVerifier;
 
+    @Value("${app.auth.email-verification.enabled:false}")
+    private boolean emailVerificationEnabled;
+
     public LoginResponse login(
             LoginRequest request
     ) {
@@ -48,12 +52,15 @@ public class AuthService {
                         .trim()
                         .toLowerCase(Locale.ROOT);
 
+        String phoneLogin =
+                normalizePhoneLogin(login);
+
         User user =
                 userRepository.findByEmail(login)
-                        .or(() -> userRepository.findByPhoneNumber(login))
+                        .or(() -> userRepository.findByPhoneNumber(phoneLogin))
                         .orElseThrow(
                                 () -> new BadCredentialsException(
-                                        "Invalid email or password"
+                                        "Invalid email/mobile number or password"
                                 )
                         );
 
@@ -66,7 +73,7 @@ public class AuthService {
         if (!valid) {
 
             throw new BadCredentialsException(
-                    "Invalid email or password"
+                    "Invalid email/mobile number or password"
             );
         }
 
@@ -142,21 +149,44 @@ public class AuthService {
                         )
                         .role(Role.SALES_EMPLOYEE)
                         .active(false)
-                        .emailVerified(false)
-                        .emailVerificationOtp(generateOtp())
-                        .emailVerificationToken(UUID.randomUUID().toString())
-                        .emailVerificationExpiresAt(LocalDateTime.now().plusMinutes(15))
+                        .emailVerified(!emailVerificationEnabled)
+                        .emailVerificationOtp(
+                                emailVerificationEnabled
+                                        ? generateOtp()
+                                        : null
+                        )
+                        .emailVerificationToken(
+                                emailVerificationEnabled
+                                        ? UUID.randomUUID().toString()
+                                        : null
+                        )
+                        .emailVerificationExpiresAt(
+                                emailVerificationEnabled
+                                        ? LocalDateTime.now().plusMinutes(15)
+                                        : null
+                        )
                         .authProvider("LOCAL")
-                        .approvalStatus(ApprovalStatus.EMAIL_VERIFICATION_PENDING)
+                        .approvalStatus(
+                                emailVerificationEnabled
+                                        ? ApprovalStatus.EMAIL_VERIFICATION_PENDING
+                                        : ApprovalStatus.PENDING
+                        )
                         .createdAt(LocalDateTime.now())
                         .build();
 
         User savedUser =
                 userRepository.save(user);
 
-        emailVerificationService.sendVerification(savedUser);
+        if (emailVerificationEnabled) {
+            emailVerificationService.sendVerification(savedUser);
+        }
 
         return mapToUserResponse(savedUser);
+    }
+
+    public boolean isEmailVerificationEnabled() {
+
+        return emailVerificationEnabled;
     }
 
     public UserResponse verifyEmail(
@@ -430,5 +460,24 @@ public class AuthService {
         }
 
         return "User account is awaiting super admin approval";
+    }
+
+    private String normalizePhoneLogin(
+            String login
+    ) {
+
+        String digitsOnly =
+                login.replaceAll(
+                        "\\D",
+                        ""
+                );
+
+        if (digitsOnly.length() >= 10) {
+            return digitsOnly.substring(
+                    digitsOnly.length() - 10
+            );
+        }
+
+        return login;
     }
 }

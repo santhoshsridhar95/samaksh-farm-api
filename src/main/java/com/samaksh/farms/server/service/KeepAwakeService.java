@@ -40,6 +40,9 @@ public class KeepAwakeService {
     @Value("${app.keep-awake.target-url:}")
     private String configuredTargetUrl;
 
+    @Value("${app.keep-awake.render-external-url:}")
+    private String renderExternalUrl;
+
     private volatile boolean enabled;
 
     private volatile int intervalMinutes;
@@ -56,7 +59,10 @@ public class KeepAwakeService {
     public void initialize() {
         enabled = configuredEnabled;
         intervalMinutes = normalizeInterval(configuredIntervalMinutes);
-        targetUrl = normalizeUrl(configuredTargetUrl);
+        targetUrl = resolveInitialTargetUrl();
+        lastMessage = targetUrl.isBlank()
+                ? "Keep-awake target URL is empty"
+                : "Keep-awake initialized";
     }
 
     public KeepAwakeSettingsResponse settings() {
@@ -75,7 +81,7 @@ public class KeepAwakeService {
         }
 
         if (request.getTargetUrl() != null) {
-            targetUrl = normalizeUrl(request.getTargetUrl());
+            targetUrl = resolveTargetUrl(request.getTargetUrl());
         }
 
         lastMessage = "Settings updated for the running server";
@@ -156,5 +162,30 @@ public class KeepAwakeService {
 
     private String normalizeUrl(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private String resolveInitialTargetUrl() {
+        return resolveTargetUrl(configuredTargetUrl);
+    }
+
+    private String resolveTargetUrl(
+            String targetUrl
+    ) {
+        String explicitTarget =
+                normalizeUrl(targetUrl);
+
+        if (!explicitTarget.isBlank()) {
+            return explicitTarget;
+        }
+
+        String renderUrl =
+                normalizeUrl(renderExternalUrl);
+
+        if (renderUrl.isBlank()) {
+            return "";
+        }
+
+        return renderUrl.replaceAll("/+$", "") +
+                "/api/health/ping";
     }
 }
