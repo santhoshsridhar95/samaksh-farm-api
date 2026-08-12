@@ -93,7 +93,6 @@ public class UserController {
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<UserResponse> approveUser(
             @PathVariable Long id,
-            @RequestBody ApproveUserRequest request,
             Authentication authentication
     ) {
 
@@ -104,7 +103,6 @@ public class UserController {
                 .data(
                         userService.approveUser(
                                 id,
-                                request,
                                 authentication
                         )
                 )

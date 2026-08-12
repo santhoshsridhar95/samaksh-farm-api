@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.util.List;
 import java.util.Locale;
 
 @Component
@@ -39,15 +40,18 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
             }
         }
 
+        repairUserConstraints();
+    }
+
+    public void repairUserConstraints() {
         repairUsersRoleConstraint();
+        repairUserExtraRolesConstraint();
         repairUsersApprovalStatusConstraint();
     }
 
     private void repairUsersRoleConstraint() {
 
-        jdbcTemplate.execute(
-                "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check"
-        );
+        dropUsersCheckConstraintsContaining("role");
 
         jdbcTemplate.execute(
                 """
@@ -67,11 +71,57 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         LOGGER.info("Verified users_role_check constraint");
     }
 
-    private void repairUsersApprovalStatusConstraint() {
+    private void repairUserExtraRolesConstraint() {
+
+        Boolean tableExists =
+                jdbcTemplate.queryForObject(
+                        "SELECT to_regclass('public.user_extra_roles') IS NOT NULL",
+                        Boolean.class
+                );
+
+        if (!Boolean.TRUE.equals(tableExists)) {
+            return;
+        }
+
+        List<String> checkConstraints =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT conname
+                        FROM pg_constraint
+                        WHERE conrelid = 'public.user_extra_roles'::regclass
+                        AND contype = 'c'
+                        """,
+                        String.class
+                );
+
+        for (String constraint : checkConstraints) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE user_extra_roles DROP CONSTRAINT IF EXISTS " +
+                            quoteIdentifier(constraint)
+            );
+        }
 
         jdbcTemplate.execute(
-                "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_approval_status_check"
+                """
+                ALTER TABLE user_extra_roles
+                ADD CONSTRAINT user_extra_roles_role_check
+                CHECK (role IN (
+                    'SUPER_ADMIN',
+                    'FARM_MANAGER',
+                    'SALES_ADMIN',
+                    'SALES_EMPLOYEE',
+                    'LABOUR',
+                    'SALES_USER'
+                ))
+                """
         );
+
+        LOGGER.info("Verified user_extra_roles_role_check constraint");
+    }
+
+    private void repairUsersApprovalStatusConstraint() {
+
+        dropUsersCheckConstraintsContaining("approval_status");
 
         jdbcTemplate.execute(
                 """
@@ -89,5 +139,47 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         );
 
         LOGGER.info("Verified users_approval_status_check constraint");
+    }
+
+    private void dropUsersCheckConstraintsContaining(
+            String columnName
+    ) {
+
+        Boolean tableExists =
+                jdbcTemplate.queryForObject(
+                        "SELECT to_regclass('public.users') IS NOT NULL",
+                        Boolean.class
+                );
+
+        if (!Boolean.TRUE.equals(tableExists)) {
+            return;
+        }
+
+        List<String> checkConstraints =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT conname
+                        FROM pg_constraint
+                        WHERE conrelid = 'public.users'::regclass
+                        AND contype = 'c'
+                        AND lower(pg_get_constraintdef(oid)) LIKE ?
+                        """,
+                        String.class,
+                        "%" + columnName.toLowerCase(Locale.ROOT) + "%"
+                );
+
+        for (String constraint : checkConstraints) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE users DROP CONSTRAINT IF EXISTS " +
+                            quoteIdentifier(constraint)
+            );
+        }
+    }
+
+    private String quoteIdentifier(
+            String value
+    ) {
+
+        return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 }
