@@ -5,7 +5,9 @@ import com.samaksh.farms.customer.dto.CustomerRequest;
 import com.samaksh.farms.customer.dto.CustomerResponse;
 import com.samaksh.farms.customer.dto.PagedResponse;
 import com.samaksh.farms.customer.service.CustomerService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,7 +20,7 @@ public class CustomerController {
 
     @PostMapping
     public ApiResponse<CustomerResponse> createCustomer(
-            @RequestBody CustomerRequest request,
+            @Valid @RequestBody CustomerRequest request,
             Authentication authentication
     ) {
 
@@ -54,7 +56,12 @@ public class CustomerController {
             @RequestParam(
                     required = false
             )
-            String search
+            String search,
+
+            @RequestParam(
+                    defaultValue = "false"
+            )
+            boolean includeInactive
     ) {
 
         return ApiResponse
@@ -67,7 +74,53 @@ public class CustomerController {
                         customerService.getCustomers(
                                 page,
                                 size,
-                                search
+                                search,
+                                includeInactive
+                        )
+                )
+                .build();
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<CustomerResponse> updateCustomer(
+            @PathVariable Long id,
+            @Valid @RequestBody CustomerRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<CustomerResponse>builder()
+                .success(true)
+                .message(
+                        "Customer updated successfully"
+                )
+                .data(
+                        customerService.updateCustomer(
+                                id,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<CustomerResponse> softDeleteCustomer(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<CustomerResponse>builder()
+                .success(true)
+                .message(
+                        "Shop deleted successfully"
+                )
+                .data(
+                        customerService.softDeleteCustomer(
+                                id,
+                                authentication
                         )
                 )
                 .build();

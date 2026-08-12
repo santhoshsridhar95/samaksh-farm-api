@@ -11,6 +11,10 @@ public class AuditResponse {
 
     private Long id;
 
+    private Long userId;
+
+    private String userName;
+
     private String userEmail;
 
     private String module;

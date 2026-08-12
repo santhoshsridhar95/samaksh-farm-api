@@ -89,6 +89,48 @@ public class UserController {
                 .build();
     }
 
+    @PutMapping("/{id}/approve")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<UserResponse> approveUser(
+            @PathVariable Long id,
+            @RequestBody ApproveUserRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<UserResponse>builder()
+                .success(true)
+                .message("User approved successfully")
+                .data(
+                        userService.approveUser(
+                                id,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
+    @PutMapping("/{id}/reject")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<UserResponse> rejectUser(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<UserResponse>builder()
+                .success(true)
+                .message("User rejected successfully")
+                .data(
+                        userService.rejectUser(
+                                id,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
     @PutMapping("/{id}/role")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<UserResponse> changeRole(
@@ -130,6 +172,48 @@ public class UserController {
                 .success(true)
                 .message("Password reset successfully")
                 .data("SUCCESS")
+                .build();
+    }
+
+    @PutMapping("/{id}/permissions")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<UserResponse> changePermissions(
+            @PathVariable Long id,
+            @RequestBody ChangePermissionsRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<UserResponse>builder()
+                .success(true)
+                .message("Entitlements updated successfully")
+                .data(
+                        userService.changePermissions(
+                                id,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<UserResponse> deleteUser(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<UserResponse>builder()
+                .success(true)
+                .message("User deleted successfully")
+                .data(
+                        userService.softDeleteUser(
+                                id,
+                                authentication
+                        )
+                )
                 .build();
     }
 }

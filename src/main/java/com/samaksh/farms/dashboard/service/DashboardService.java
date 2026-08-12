@@ -2,7 +2,6 @@ package com.samaksh.farms.dashboard.service;
 
 import com.samaksh.farms.dashboard.dto.DashboardResponse;
 import com.samaksh.farms.enums.OrderStatus;
-import com.samaksh.farms.enums.PaymentStatus;
 import com.samaksh.farms.order.entity.CustomerOrder;
 import com.samaksh.farms.order.repo.CustomerOrderRepository;
 import com.samaksh.farms.products.repo.ProductRepository;
@@ -67,12 +66,8 @@ public class DashboardService {
         double pendingRevenue =
                 saleRepository.findAll()
                         .stream()
-                        .filter(sale ->
-                                sale.getPaymentStatus()
-                                        == PaymentStatus.PENDING
-                        )
                         .mapToDouble(
-                                Sale::getTotalAmount
+                                this::salePending
                         )
                         .sum();
 
@@ -102,5 +97,27 @@ public class DashboardService {
                         pendingRevenue
                 )
                 .build();
+    }
+
+    private double salePending(
+            Sale sale
+    ) {
+
+        if (sale.getPendingAmount() != null) {
+
+            return sale.getPendingAmount();
+        }
+
+        double totalAmount =
+                sale.getTotalAmount() == null
+                        ? 0
+                        : sale.getTotalAmount();
+
+        double amountCollected =
+                sale.getAmountCollected() == null
+                        ? 0
+                        : sale.getAmountCollected();
+
+        return totalAmount - amountCollected;
     }
 }

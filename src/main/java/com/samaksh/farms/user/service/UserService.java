@@ -2,7 +2,10 @@ package com.samaksh.farms.user.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
+import com.samaksh.farms.user.dto.ApproveUserRequest;
+import com.samaksh.farms.user.dto.ChangePermissionsRequest;
 import com.samaksh.farms.user.dto.ChangeRoleRequest;
 import com.samaksh.farms.user.dto.ResetPasswordRequest;
 import com.samaksh.farms.user.dto.UserRequest;
@@ -15,8 +18,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +37,7 @@ public class UserService {
 
         return userRepository.findAll()
                 .stream()
+                .filter(user -> user.getApprovalStatus() != ApprovalStatus.DELETED)
                 .map(this::mapToUserResponse)
                 .toList();
     }
@@ -55,16 +61,39 @@ public class UserService {
             );
         }
 
+        String phoneNumber =
+                request.getPhoneNumber() == null
+                        ? null
+                        : request.getPhoneNumber()
+                        .trim()
+                        .toLowerCase(Locale.ROOT);
+
+        if (phoneNumber != null &&
+                !phoneNumber.isBlank() &&
+                userRepository.existsByPhoneNumber(phoneNumber)) {
+
+            throw new RuntimeException(
+                    "Phone number already exists"
+            );
+        }
+
         User user = User.builder()
                 .name(request.getName())
                 .email(email)
+                .phoneNumber(phoneNumber)
                 .password(
                         passwordEncoder.encode(
                                 request.getPassword()
                         )
                 )
-                .role(request.getRole())
+                .role(primaryRole(request.getRoles(), request.getRole()))
+                .extraRoles(extraRoles(request.getRoles(), request.getRole()))
+                .emailVerified(true)
+                .authProvider("SUPER_ADMIN")
+                .extraPermissions(cleanPermissions(request.getExtraPermissions()))
                 .active(true)
+                .approvalStatus(ApprovalStatus.APPROVED)
+                .approvedAt(LocalDateTime.now())
                 .createdAt(LocalDateTime.now())
                 .build();
 
@@ -77,6 +106,87 @@ public class UserService {
                 "CREATE_USER",
                 savedUser.getEmail(),
                 "User created"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
+    public UserResponse approveUser(
+            Long userId,
+            ApproveUserRequest request,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        List<Role> roles =
+                cleanRoles(request.getRoles(), request.getRole());
+
+        user.setRole(roles.getFirst());
+        user.setExtraRoles(
+                roles.size() > 1
+                        ? List.copyOf(roles.subList(1, roles.size()))
+                        : List.of()
+        );
+        user.setActive(
+                request.getActive() == null
+                        ? true
+                        : request.getActive()
+        );
+        user.setApprovalStatus(ApprovalStatus.APPROVED);
+        user.setApprovedAt(LocalDateTime.now());
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "APPROVE_USER",
+                savedUser.getEmail(),
+                "User approved"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
+    public UserResponse rejectUser(
+            Long userId,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        preventRemovingLastActiveSuperAdmin(user);
+
+        user.setActive(false);
+        user.setApprovalStatus(ApprovalStatus.REJECTED);
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "REJECT_USER",
+                savedUser.getEmail(),
+                "User rejected"
         );
 
         return mapToUserResponse(savedUser);
@@ -164,15 +274,23 @@ public class UserService {
                                         new ResourceNotFoundException(
                                                 "User",
                                                 userId
-                                        )
+                        )
                         );
+
+        List<Role> roles =
+                cleanRoles(request.getRoles(), request.getRole());
 
         preventRemovingLastActiveSuperAdmin(
                 user,
-                request.getRole()
+                roles
         );
 
-        user.setRole(request.getRole());
+        user.setRole(roles.getFirst());
+        user.setExtraRoles(
+                roles.size() > 1
+                        ? List.copyOf(roles.subList(1, roles.size()))
+                        : List.of()
+        );
 
         User savedUser =
                 userRepository.save(user);
@@ -183,7 +301,7 @@ public class UserService {
                 "CHANGE_ROLE",
                 savedUser.getEmail(),
                 "Role changed to "
-                        + request.getRole()
+                        + roles
         );
 
         return mapToUserResponse(savedUser);
@@ -210,6 +328,9 @@ public class UserService {
                         request.getPassword()
                 )
         );
+        user.setActive(true);
+        user.setApprovalStatus(ApprovalStatus.APPROVED);
+        user.setApprovedAt(LocalDateTime.now());
 
         userRepository.save(user);
 
@@ -222,6 +343,81 @@ public class UserService {
         );
     }
 
+    public UserResponse softDeleteUser(
+            Long userId,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        preventSelfDisable(
+                user,
+                authentication
+        );
+
+        preventRemovingLastActiveSuperAdmin(user);
+
+        user.setActive(false);
+        user.setApprovalStatus(ApprovalStatus.DELETED);
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "DELETE_USER",
+                savedUser.getEmail(),
+                "User soft deleted"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
+    public UserResponse changePermissions(
+            Long userId,
+            ChangePermissionsRequest request,
+            Authentication authentication
+    ) {
+
+        User user =
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
+
+        user.setExtraPermissions(
+                cleanPermissions(
+                        request.getExtraPermissions()
+                )
+        );
+
+        User savedUser =
+                userRepository.save(user);
+
+        auditService.createAudit(
+                authentication,
+                "USER",
+                "CHANGE_ENTITLEMENTS",
+                savedUser.getEmail(),
+                "Extra entitlements changed"
+        );
+
+        return mapToUserResponse(savedUser);
+    }
+
     private UserResponse mapToUserResponse(
             User user
     ) {
@@ -230,9 +426,107 @@ public class UserService {
                 .id(user.getId())
                 .name(user.getName())
                 .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole())
+                .roles(allRoles(user))
                 .active(user.getActive())
+                .approvalStatus(
+                        user.getApprovalStatus() == null
+                                ? ApprovalStatus.APPROVED
+                                : user.getApprovalStatus()
+                )
+                .emailVerified(
+                        Boolean.TRUE.equals(user.getEmailVerified())
+                )
+                .extraPermissions(
+                        cleanPermissions(user.getExtraPermissions())
+                )
                 .build();
+    }
+
+    private List<String> cleanPermissions(
+            List<String> permissions
+    ) {
+
+        if (permissions == null) {
+            return List.of();
+        }
+
+        return List.copyOf(
+                new LinkedHashSet<>(
+                        permissions.stream()
+                                .filter(Objects::nonNull)
+                                .map(String::trim)
+                                .filter(permission -> !permission.isBlank())
+                                .toList()
+                )
+        );
+    }
+
+    private Role primaryRole(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        return cleanRoles(roles, fallback).getFirst();
+    }
+
+    private List<Role> extraRoles(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        List<Role> cleanRoles =
+                cleanRoles(roles, fallback);
+
+        return cleanRoles.size() > 1
+                ? List.copyOf(cleanRoles.subList(1, cleanRoles.size()))
+                : List.of();
+    }
+
+    private List<Role> cleanRoles(
+            List<Role> roles,
+            Role fallback
+    ) {
+
+        LinkedHashSet<Role> result =
+                new LinkedHashSet<>();
+
+        if (roles != null) {
+            result.addAll(
+                    roles.stream()
+                            .filter(Objects::nonNull)
+                            .toList()
+            );
+        }
+
+        if (result.isEmpty()) {
+            result.add(
+                    fallback == null
+                            ? Role.SALES_EMPLOYEE
+                            : fallback
+            );
+        }
+
+        return List.copyOf(result);
+    }
+
+    private List<Role> allRoles(
+            User user
+    ) {
+
+        LinkedHashSet<Role> roles =
+                new LinkedHashSet<>();
+
+        if (user.getRole() != null) {
+            roles.add(user.getRole());
+        }
+
+        if (user.getExtraRoles() != null) {
+            roles.addAll(user.getExtraRoles());
+        }
+
+        return List.copyOf(roles);
     }
 
     private void preventSelfDisable(
@@ -277,6 +571,31 @@ public class UserService {
                 targetUser.getRole() == Role.SUPER_ADMIN
                         && targetUser.getActive()
                         && nextRole != Role.SUPER_ADMIN;
+
+        if (removesSuperAdmin
+                && userRepository.countByRoleAndActiveTrue(
+                Role.SUPER_ADMIN
+        ) <= 1) {
+
+            throw new IllegalStateException(
+                    "At least one active SUPER_ADMIN is required"
+            );
+        }
+    }
+
+    private void preventRemovingLastActiveSuperAdmin(
+            User targetUser,
+            List<Role> nextRoles
+    ) {
+
+        boolean currentlySuperAdmin =
+                allRoles(targetUser).contains(Role.SUPER_ADMIN)
+                        && targetUser.getActive();
+
+        boolean removesSuperAdmin =
+                currentlySuperAdmin &&
+                        (nextRoles == null ||
+                                !nextRoles.contains(Role.SUPER_ADMIN));
 
         if (removesSuperAdmin
                 && userRepository.countByRoleAndActiveTrue(

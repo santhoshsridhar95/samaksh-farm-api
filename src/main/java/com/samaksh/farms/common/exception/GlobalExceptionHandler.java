@@ -1,6 +1,7 @@
 package com.samaksh.farms.common.exception;
 
 import com.samaksh.farms.common.dto.ApiResponse;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -121,6 +122,29 @@ public class GlobalExceptionHandler {
                                 .message(
                                         ex.getMessage()
                                 )
+                                .data(null)
+                                .build()
+                );
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiResponse<Object>>
+    handleDataIntegrityViolation(
+            DataIntegrityViolationException ex
+    ) {
+
+        String message =
+                ex.getMessage() != null &&
+                        ex.getMessage().toLowerCase().contains("email")
+                        ? "Email already exists"
+                        : "Duplicate or invalid data";
+
+        return ResponseEntity
+                .badRequest()
+                .body(
+                        ApiResponse.builder()
+                                .success(false)
+                                .message(message)
                                 .data(null)
                                 .build()
                 );

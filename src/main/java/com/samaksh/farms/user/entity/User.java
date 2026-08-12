@@ -1,11 +1,14 @@
 package com.samaksh.farms.user.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.security.Principal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Entity
 @Table(name = "users")
@@ -14,8 +17,12 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = "password")
-public class User {
+@ToString(exclude = {
+        "password",
+        "extraPermissions",
+        "extraRoles"
+})
+public class User implements Principal {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,16 +37,50 @@ public class User {
     )
     private String email;
 
+    @Column(unique = true)
+    private String phoneNumber;
+
     @JsonIgnore
-    @Column(nullable = false)
     private String password;
+
+    private Boolean emailVerified;
+
+    private String emailVerificationOtp;
+
+    private String emailVerificationToken;
+
+    private LocalDateTime emailVerificationExpiresAt;
+
+    private String authProvider;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "user_extra_permissions",
+            joinColumns = @JoinColumn(name = "user_id")
+    )
+    @Column(name = "permission_key")
+    private List<String> extraPermissions;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role;
 
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "user_extra_roles",
+            joinColumns = @JoinColumn(name = "user_id")
+    )
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role")
+    private List<Role> extraRoles;
+
     @Column(nullable = false)
     private Boolean active;
+
+    @Enumerated(EnumType.STRING)
+    private ApprovalStatus approvalStatus;
+
+    private LocalDateTime approvedAt;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;

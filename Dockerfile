@@ -10,4 +10,6 @@ RUN ./mvnw clean package -DskipTests
 
 EXPOSE 8080
 
+ENV SPRING_PROFILES_ACTIVE=prod
+
 CMD ["java", "-jar", "target/farms-0.0.1-SNAPSHOT.jar"]
