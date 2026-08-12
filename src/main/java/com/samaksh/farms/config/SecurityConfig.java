@@ -74,7 +74,8 @@ public class SecurityConfig {
 
                                 // Public bootstrap APIs
                                 .requestMatchers(
-                                        "/api/auth/login"
+                                        "/api/auth/login",
+                                        "/api/health/ping"
 
                                 ).permitAll()
 
@@ -93,6 +94,9 @@ public class SecurityConfig {
                                 .hasRole(SUPER_ADMIN)
 
                                 .requestMatchers("/api/audit/**")
+                                .hasAnyRole(FARM_MANAGEMENT)
+
+                                .requestMatchers("/api/server/**")
                                 .hasAnyRole(FARM_MANAGEMENT)
 
                                 // Dashboards and analytics

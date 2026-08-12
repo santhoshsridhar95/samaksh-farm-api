@@ -43,47 +43,60 @@ public class DataLoader implements CommandLineRunner {
     @Override
     public void run(String... args) {
 
+        if (hasBootstrapAdminConfig()) {
+            upsertBootstrapAdmin();
+            return;
+        }
+
         if (userRepository.count() == 0) {
 
-            if (adminEmail == null
-                    || adminEmail.isBlank()
-                    || adminPassword == null
-                    || adminPassword.isBlank()) {
-
-                log.warn(
-                        "No users exist. Configure app.bootstrap.admin.email and app.bootstrap.admin.password to bootstrap the first SUPER_ADMIN."
-                );
-
-                return;
-            }
-
-            User admin = new User();
-
-            admin.setName(adminName);
-
-            admin.setEmail(
-                    adminEmail.trim()
-                            .toLowerCase(Locale.ROOT)
+            log.warn(
+                    "No users exist. Configure app.bootstrap.admin.email and app.bootstrap.admin.password to bootstrap the first SUPER_ADMIN."
             );
+        }
+    }
 
-            admin.setPassword(
-                    passwordEncoder.encode(adminPassword)
-            );
+    private boolean hasBootstrapAdminConfig() {
+        return adminEmail != null
+                && !adminEmail.isBlank()
+                && adminPassword != null
+                && !adminPassword.isBlank();
+    }
 
-            admin.setRole(Role.SUPER_ADMIN);
+    private void upsertBootstrapAdmin() {
+        String email =
+                adminEmail.trim()
+                        .toLowerCase(Locale.ROOT);
 
-            admin.setActive(true);
+        User admin =
+                userRepository.findByEmail(email)
+                        .orElseGet(User::new);
 
+        admin.setName(
+                admin.getName() == null || admin.getName().isBlank()
+                        ? adminName
+                        : admin.getName()
+        );
+        admin.setEmail(email);
+
+        admin.setPassword(
+                passwordEncoder.encode(adminPassword)
+        );
+
+        admin.setRole(Role.SUPER_ADMIN);
+        admin.setActive(true);
+
+        if (admin.getCreatedAt() == null) {
             admin.setCreatedAt(
                     LocalDateTime.now()
             );
-
-            userRepository.save(admin);
-
-            log.info(
-                    "Initial SUPER_ADMIN user created for {}",
-                    admin.getEmail()
-            );
         }
+
+        userRepository.save(admin);
+
+        log.info(
+                "Bootstrap SUPER_ADMIN user ensured for {}",
+                admin.getEmail()
+        );
     }
 }
