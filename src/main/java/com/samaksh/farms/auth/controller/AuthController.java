@@ -1,5 +1,6 @@
 package com.samaksh.farms.auth.controller;
 
+import com.samaksh.farms.auth.dto.AuthConfigResponse;
 import com.samaksh.farms.auth.dto.LoginRequest;
 import com.samaksh.farms.auth.dto.LoginResponse;
 import com.samaksh.farms.auth.dto.ForgotPasswordRequest;
@@ -19,6 +20,23 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+
+    @GetMapping("/config")
+    public ApiResponse<AuthConfigResponse> config() {
+
+        return ApiResponse
+                .<AuthConfigResponse>builder()
+                .success(true)
+                .message("Auth configuration loaded")
+                .data(
+                        AuthConfigResponse.builder()
+                                .emailVerificationEnabled(
+                                        authService.isEmailVerificationEnabled()
+                                )
+                                .build()
+                )
+                .build();
+    }
 
     @PostMapping("/login")
     public LoginResponse login(
@@ -42,7 +60,11 @@ public class AuthController {
         return ApiResponse
                 .<UserResponse>builder()
                 .success(true)
-                .message("Signup submitted for super admin approval")
+                .message(
+                        authService.isEmailVerificationEnabled()
+                                ? "OTP sent. Verify your email before super admin approval."
+                                : "Signup submitted for super admin approval"
+                )
                 .data(authService.signup(request))
                 .build();
     }

@@ -74,7 +74,12 @@ public class SecurityConfig {
 
                                 // Public bootstrap APIs
                                 .requestMatchers(
+                                        "/api/auth/config",
                                         "/api/auth/login",
+                                        "/api/auth/signup",
+                                        "/api/auth/forgot-password",
+                                        "/api/auth/verify-email",
+                                        "/api/auth/google",
                                         "/api/health/ping"
 
                                 ).permitAll()

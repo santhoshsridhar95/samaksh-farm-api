@@ -1,5 +1,6 @@
 package com.samaksh.farms.config;
 
+import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
 import com.samaksh.farms.user.entity.User;
 import com.samaksh.farms.user.repo.UserRepository;
@@ -64,6 +65,9 @@ public class DataLoader implements CommandLineRunner {
     }
 
     private void upsertBootstrapAdmin() {
+        LocalDateTime now =
+                LocalDateTime.now();
+
         String email =
                 adminEmail.trim()
                         .toLowerCase(Locale.ROOT);
@@ -72,11 +76,7 @@ public class DataLoader implements CommandLineRunner {
                 userRepository.findByEmail(email)
                         .orElseGet(User::new);
 
-        admin.setName(
-                admin.getName() == null || admin.getName().isBlank()
-                        ? adminName
-                        : admin.getName()
-        );
+        admin.setName(adminName);
         admin.setEmail(email);
 
         admin.setPassword(
@@ -85,10 +85,17 @@ public class DataLoader implements CommandLineRunner {
 
         admin.setRole(Role.SUPER_ADMIN);
         admin.setActive(true);
+        admin.setApprovalStatus(ApprovalStatus.APPROVED);
+        admin.setApprovedAt(now);
+        admin.setEmailVerified(true);
+        admin.setEmailVerificationOtp(null);
+        admin.setEmailVerificationToken(null);
+        admin.setEmailVerificationExpiresAt(null);
+        admin.setAuthProvider("LOCAL");
 
         if (admin.getCreatedAt() == null) {
             admin.setCreatedAt(
-                    LocalDateTime.now()
+                    now
             );
         }
 
