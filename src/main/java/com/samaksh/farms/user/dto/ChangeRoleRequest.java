@@ -1,6 +1,5 @@
 package com.samaksh.farms.user.dto;
 
-import com.samaksh.farms.enums.Role;
 import lombok.Data;
 
 import java.util.List;
@@ -8,7 +7,7 @@ import java.util.List;
 @Data
 public class ChangeRoleRequest {
 
-    private Role role;
+    private String role;
 
-    private List<Role> roles;
+    private List<String> roles;
 }

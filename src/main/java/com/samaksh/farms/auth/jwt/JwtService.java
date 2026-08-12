@@ -19,10 +19,13 @@ public class JwtService {
 
     private final long expirationMillis;
 
+    private final ServerSessionState serverSessionState;
+
     public JwtService(
             @Value("${app.security.jwt.secret}") String secret,
             @Value("${app.security.jwt.expiration-ms:86400000}")
-            long expirationMillis
+            long expirationMillis,
+            ServerSessionState serverSessionState
     ) {
 
         if (secret == null
@@ -35,6 +38,7 @@ public class JwtService {
 
         this.secret = secret;
         this.expirationMillis = expirationMillis;
+        this.serverSessionState = serverSessionState;
     }
 
     private SecretKey getSigningKey() {
@@ -53,6 +57,10 @@ public class JwtService {
                 .claim("userId", user.getId())
                 .claim("role", user.getRole().name())
                 .claim("name", user.getName())
+                .claim(
+                        "serverSessionId",
+                        serverSessionState.getServerSessionId()
+                )
                 .issuedAt(new Date())
                 .expiration(
                         new Date(
@@ -89,11 +97,43 @@ public class JwtService {
         try {
 
             extractEmail(token);
+            validateServerSession(token);
             return true;
 
         } catch (JwtException | IllegalArgumentException ex) {
 
             return false;
+        }
+    }
+
+    private void validateServerSession(
+            String token
+    ) {
+
+        if (!serverSessionState.isInvalidateOnRestart()) {
+            return;
+        }
+
+        Claims claims =
+                Jwts.parser()
+                        .verifyWith(
+                                getSigningKey()
+                        )
+                        .build()
+                        .parseSignedClaims(token)
+                        .getPayload();
+
+        String tokenServerSessionId =
+                claims.get(
+                        "serverSessionId",
+                        String.class
+                );
+
+        if (!serverSessionState.getServerSessionId()
+                .equals(tokenServerSessionId)) {
+            throw new JwtException(
+                    "Token was issued before the latest server restart"
+            );
         }
     }
 }

@@ -80,7 +80,8 @@ public class SecurityConfig {
                                         "/api/auth/forgot-password",
                                         "/api/auth/verify-email",
                                         "/api/auth/google",
-                                        "/api/health/ping"
+                                        "/api/health/ping",
+                                        "/api/reviews"
 
                                 ).permitAll()
 
@@ -97,6 +98,19 @@ public class SecurityConfig {
                                 // User and audit administration
                                 .requestMatchers("/api/users/**")
                                 .hasRole(SUPER_ADMIN)
+
+                                .requestMatchers("/api/reviews/admin")
+                                .hasRole(SUPER_ADMIN)
+
+                                .requestMatchers(
+                                        HttpMethod.PUT,
+                                        "/api/reviews/**"
+                                ).hasRole(SUPER_ADMIN)
+
+                                .requestMatchers(
+                                        HttpMethod.DELETE,
+                                        "/api/reviews/**"
+                                ).hasRole(SUPER_ADMIN)
 
                                 .requestMatchers("/api/audit/**")
                                 .hasAnyRole(FARM_MANAGEMENT)

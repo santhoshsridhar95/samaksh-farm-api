@@ -2,6 +2,7 @@ package com.samaksh.farms.user.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.config.DatabaseConstraintRepair;
 import com.samaksh.farms.enums.ApprovalStatus;
 import com.samaksh.farms.enums.Role;
 import com.samaksh.farms.user.dto.ApproveUserRequest;
@@ -13,9 +14,12 @@ import com.samaksh.farms.user.dto.UserResponse;
 import com.samaksh.farms.user.entity.User;
 import com.samaksh.farms.user.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.LinkedHashSet;
@@ -32,6 +36,10 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
 
     private final AuditService auditService;
+
+    private final DatabaseConstraintRepair databaseConstraintRepair;
+
+    private final JdbcTemplate jdbcTemplate;
 
     public List<UserResponse> getAllUsers() {
 
@@ -98,7 +106,7 @@ public class UserService {
                 .build();
 
         User savedUser =
-                userRepository.save(user);
+                saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -111,9 +119,9 @@ public class UserService {
         return mapToUserResponse(savedUser);
     }
 
+    @Transactional
     public UserResponse approveUser(
             Long userId,
-            ApproveUserRequest request,
             Authentication authentication
     ) {
 
@@ -127,25 +135,23 @@ public class UserService {
                                         )
                         );
 
-        List<Role> roles =
-                cleanRoles(request.getRoles(), request.getRole());
+        int updated =
+                userRepository.approveById(
+                        userId,
+                        ApprovalStatus.APPROVED,
+                        LocalDateTime.now()
+                );
 
-        user.setRole(roles.getFirst());
-        user.setExtraRoles(
-                roles.size() > 1
-                        ? List.copyOf(roles.subList(1, roles.size()))
-                        : List.of()
-        );
-        user.setActive(
-                request.getActive() == null
-                        ? true
-                        : request.getActive()
-        );
-        user.setApprovalStatus(ApprovalStatus.APPROVED);
-        user.setApprovedAt(LocalDateTime.now());
+        if (updated == 0) {
+            throw new ResourceNotFoundException(
+                    "User",
+                    userId
+            );
+        }
 
         User savedUser =
-                userRepository.save(user);
+                userRepository.findById(userId)
+                        .orElse(user);
 
         auditService.createAudit(
                 authentication,
@@ -179,7 +185,7 @@ public class UserService {
         user.setApprovalStatus(ApprovalStatus.REJECTED);
 
         User savedUser =
-                userRepository.save(user);
+                saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -217,7 +223,7 @@ public class UserService {
         user.setActive(false);
 
         User savedUser =
-                userRepository.save(user);
+                saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -248,7 +254,7 @@ public class UserService {
         user.setActive(true);
 
         User savedUser =
-                userRepository.save(user);
+                saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -261,6 +267,7 @@ public class UserService {
         return mapToUserResponse(savedUser);
     }
 
+    @Transactional
     public UserResponse changeRole(
             Long userId,
             ChangeRoleRequest request,
@@ -285,15 +292,20 @@ public class UserService {
                 roles
         );
 
-        user.setRole(roles.getFirst());
-        user.setExtraRoles(
-                roles.size() > 1
-                        ? List.copyOf(roles.subList(1, roles.size()))
-                        : List.of()
+        updateUserRolesDirectly(
+                userId,
+                roles
         );
 
         User savedUser =
-                userRepository.save(user);
+                userRepository.findById(userId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "User",
+                                                userId
+                                        )
+                        );
 
         auditService.createAudit(
                 authentication,
@@ -329,10 +341,14 @@ public class UserService {
                 )
         );
         user.setActive(true);
+        user.setEmailVerified(true);
+        user.setEmailVerificationOtp(null);
+        user.setEmailVerificationToken(null);
+        user.setEmailVerificationExpiresAt(null);
         user.setApprovalStatus(ApprovalStatus.APPROVED);
         user.setApprovedAt(LocalDateTime.now());
 
-        userRepository.save(user);
+        saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -369,7 +385,7 @@ public class UserService {
         user.setApprovalStatus(ApprovalStatus.DELETED);
 
         User savedUser =
-                userRepository.save(user);
+                saveUserWithConstraintRepair(user);
 
         auditService.createAudit(
                 authentication,
@@ -444,6 +460,63 @@ public class UserService {
                 .build();
     }
 
+    private User saveUserWithConstraintRepair(
+            User user
+    ) {
+
+        try {
+            return userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException ex) {
+            databaseConstraintRepair.repairUserConstraints();
+            return userRepository.saveAndFlush(user);
+        }
+    }
+
+    private void updateUserRolesDirectly(
+            Long userId,
+            List<Role> roles
+    ) {
+
+        try {
+            databaseConstraintRepair.repairUserConstraints();
+            doUpdateUserRolesDirectly(
+                    userId,
+                    roles
+            );
+        } catch (DataIntegrityViolationException ex) {
+            databaseConstraintRepair.repairUserConstraints();
+            doUpdateUserRolesDirectly(
+                    userId,
+                    roles
+            );
+        }
+    }
+
+    private void doUpdateUserRolesDirectly(
+            Long userId,
+            List<Role> roles
+    ) {
+
+        jdbcTemplate.update(
+                "UPDATE users SET role = ? WHERE id = ?",
+                roles.getFirst().name(),
+                userId
+        );
+
+        jdbcTemplate.update(
+                "DELETE FROM user_extra_roles WHERE user_id = ?",
+                userId
+        );
+
+        for (Role role : roles.subList(1, roles.size())) {
+            jdbcTemplate.update(
+                    "INSERT INTO user_extra_roles (user_id, role) VALUES (?, ?)",
+                    userId,
+                    role.name()
+            );
+        }
+    }
+
     private List<String> cleanPermissions(
             List<String> permissions
     ) {
@@ -464,16 +537,16 @@ public class UserService {
     }
 
     private Role primaryRole(
-            List<Role> roles,
-            Role fallback
+            List<?> roles,
+            Object fallback
     ) {
 
         return cleanRoles(roles, fallback).getFirst();
     }
 
     private List<Role> extraRoles(
-            List<Role> roles,
-            Role fallback
+            List<?> roles,
+            Object fallback
     ) {
 
         List<Role> cleanRoles =
@@ -484,9 +557,37 @@ public class UserService {
                 : List.of();
     }
 
+    private List<Role> approvalRoles(
+            User user,
+            ApproveUserRequest request
+    ) {
+
+        if (request != null) {
+            try {
+                return cleanRoles(
+                        request.getRoles(),
+                        request.getRole() == null
+                                ? user.getRole()
+                                : request.getRole()
+                );
+            } catch (RuntimeException ignored) {
+                // Approval should not be blocked by a stale or malformed role payload.
+            }
+        }
+
+        List<Role> existingRoles =
+                allRoles(user);
+
+        if (!existingRoles.isEmpty()) {
+            return existingRoles;
+        }
+
+        return List.of(Role.SALES_EMPLOYEE);
+    }
+
     private List<Role> cleanRoles(
-            List<Role> roles,
-            Role fallback
+            List<?> roles,
+            Object fallback
     ) {
 
         LinkedHashSet<Role> result =
@@ -496,6 +597,7 @@ public class UserService {
             result.addAll(
                     roles.stream()
                             .filter(Objects::nonNull)
+                            .map(this::normalizeRole)
                             .toList()
             );
         }
@@ -504,11 +606,38 @@ public class UserService {
             result.add(
                     fallback == null
                             ? Role.SALES_EMPLOYEE
-                            : fallback
+                            : normalizeRole(fallback)
             );
         }
 
         return List.copyOf(result);
+    }
+
+    private Role normalizeRole(
+            Object value
+    ) {
+
+        if (value instanceof Role role) {
+            return role;
+        }
+
+        String normalized =
+                String.valueOf(value)
+                        .trim()
+                        .toUpperCase(Locale.ROOT)
+                        .replaceAll("[\\s-]+", "_");
+
+        if (normalized.isBlank()) {
+            throw new RuntimeException("Access role is required");
+        }
+
+        try {
+            return Role.valueOf(normalized);
+        } catch (IllegalArgumentException ex) {
+            throw new RuntimeException(
+                    "Invalid access role: " + value
+            );
+        }
     }
 
     private List<Role> allRoles(
