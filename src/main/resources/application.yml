@@ -1,0 +1,8 @@
+app:
+  auth:
+    email-verification:
+      enabled: ${EMAIL_VERIFICATION_ENABLED:false}
+  keep-awake:
+    enabled: ${KEEP_AWAKE_ENABLED:false}
+    interval-minutes: ${KEEP_AWAKE_INTERVAL_MINUTES:10}
+    target-url: ${KEEP_AWAKE_TARGET_URL:}
