@@ -44,11 +44,31 @@ public class CustomerReviewService {
             CustomerReviewRequest request
     ) {
 
+        String name = clean(request.getName());
+        String location = defaultLocation(request.getLocation());
+        String reviewText = clean(request.getReview());
+
+        CustomerReview existingReview =
+                reviewRepository.findFirstByNameIgnoreCaseAndReviewIgnoreCaseOrderByCreatedAtDesc(
+                                name,
+                                reviewText
+                        )
+                        .orElse(null);
+
+        if (existingReview != null) {
+            existingReview.setLocation(location);
+            existingReview.setRating(request.getRating());
+            existingReview.setPublished(true);
+            existingReview.setUpdatedAt(LocalDateTime.now());
+
+            return mapToResponse(reviewRepository.save(existingReview));
+        }
+
         CustomerReview review =
                 CustomerReview.builder()
-                        .name(clean(request.getName()))
-                        .location(defaultLocation(request.getLocation()))
-                        .review(clean(request.getReview()))
+                        .name(name)
+                        .location(location)
+                        .review(reviewText)
                         .rating(request.getRating())
                         .published(true)
                         .createdAt(LocalDateTime.now())
