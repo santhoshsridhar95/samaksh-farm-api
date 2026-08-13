@@ -38,6 +38,15 @@ public class JwtAuthenticationFilter
             FilterChain filterChain
     ) throws ServletException, IOException {
 
+        if (isPublicRequest(request)) {
+            filterChain.doFilter(
+                    request,
+                    response
+            );
+
+            return;
+        }
+
         String authHeader =
                 request.getHeader("Authorization");
 
@@ -148,5 +157,23 @@ public class JwtAuthenticationFilter
                 response.getOutputStream(),
                 body
         );
+    }
+
+    private boolean isPublicRequest(
+            HttpServletRequest request
+    ) {
+
+        String method =
+                request.getMethod();
+        String path =
+                request.getServletPath();
+
+        if ("OPTIONS".equalsIgnoreCase(method)) {
+            return true;
+        }
+
+        return "/api/reviews".equals(path)
+                && ("GET".equalsIgnoreCase(method)
+                || "POST".equalsIgnoreCase(method));
     }
 }

@@ -99,6 +99,16 @@ public class SecurityConfig {
 
                                 ).permitAll()
 
+                                .requestMatchers(
+                                        HttpMethod.POST,
+                                        "/api/reviews"
+                                ).permitAll()
+
+                                .requestMatchers(
+                                        HttpMethod.OPTIONS,
+                                        "/**"
+                                ).permitAll()
+
                                 // SWAGGER
                                 .requestMatchers(
                                         "/swagger-ui/**",
