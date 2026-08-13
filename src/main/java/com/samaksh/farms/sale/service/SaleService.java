@@ -2,6 +2,7 @@ package com.samaksh.farms.sale.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.common.time.BusinessTime;
 import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
 import com.samaksh.farms.enums.ExchangeType;
@@ -67,6 +68,18 @@ public class SaleService {
                         ? 0
                         : request.getUnitPrice();
 
+        if (quantity <= 0) {
+            throw new IllegalArgumentException(
+                    "Boxes must be greater than 0"
+            );
+        }
+
+        if (unitPrice < 0) {
+            throw new IllegalArgumentException(
+                    "Unit price cannot be negative"
+            );
+        }
+
         Product product =
                 resolveProduct(
                         request,
@@ -85,6 +98,33 @@ public class SaleService {
                 request.getExchangeBoxes() == null
                         ? 0
                         : request.getExchangeBoxes();
+
+        if (exchangeBoxes < 0) {
+            throw new IllegalArgumentException(
+                    "Exchange boxes cannot be negative"
+            );
+        }
+
+        double returnedBoxes =
+                request.getReturnedBoxes() == null
+                        ? 0
+                        : request.getReturnedBoxes();
+
+        if (returnedBoxes < 0) {
+            throw new IllegalArgumentException(
+                    "Returned boxes cannot be negative"
+            );
+        }
+
+        Double shopkeeperSellingPrice =
+                request.getShopkeeperSellingPrice();
+
+        if (shopkeeperSellingPrice != null &&
+                shopkeeperSellingPrice < 0) {
+            throw new IllegalArgumentException(
+                    "Shopkeeper selling price cannot be negative"
+            );
+        }
 
         double exchangeCredit =
                 exchangeCredit(
@@ -163,7 +203,7 @@ public class SaleService {
                                 pendingAmount
                         )
                         .shopkeeperSellingPrice(
-                                request.getShopkeeperSellingPrice()
+                                shopkeeperSellingPrice
                         )
                         .exchangeType(
                                 exchangeType
@@ -172,9 +212,7 @@ public class SaleService {
                                 exchangeBoxes
                         )
                         .returnedBoxes(
-                                request.getReturnedBoxes() == null
-                                        ? 0
-                                        : request.getReturnedBoxes()
+                                returnedBoxes
                         )
                         .paymentStatus(
                                 paymentStatus
@@ -198,7 +236,7 @@ public class SaleService {
                                 )
                         )
                         .saleDate(
-                                LocalDateTime.now()
+                                BusinessTime.now()
                         )
                         .build();
 
@@ -656,7 +694,7 @@ public class SaleService {
                 )
         );
         sale.setUpdatedAt(
-                LocalDateTime.now()
+                BusinessTime.now()
         );
     }
 
@@ -752,7 +790,7 @@ public class SaleService {
                                         ? unitPrice
                                         : 50)
                                 .active(true)
-                                .createdAt(LocalDateTime.now())
+                                .createdAt(BusinessTime.now())
                                 .build()
                 ));
     }

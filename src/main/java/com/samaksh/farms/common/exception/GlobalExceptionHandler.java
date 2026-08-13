@@ -6,6 +6,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -127,16 +129,44 @@ public class GlobalExceptionHandler {
                 );
     }
 
+    @ExceptionHandler({
+            HttpMessageNotReadableException.class,
+            MethodArgumentTypeMismatchException.class
+    })
+    public ResponseEntity<ApiResponse<Object>>
+    handleInvalidRequestFormat(
+            Exception ex
+    ) {
+
+        return ResponseEntity
+                .badRequest()
+                .body(
+                        ApiResponse.builder()
+                                .success(false)
+                                .message(
+                                        "Invalid request value. Please refresh and try again."
+                                )
+                                .data(null)
+                                .build()
+                );
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Object>>
     handleDataIntegrityViolation(
             DataIntegrityViolationException ex
     ) {
 
+        String errorMessage =
+                ex.getMessage() == null
+                        ? ""
+                        : ex.getMessage().toLowerCase();
+
         String message =
-                ex.getMessage() != null &&
-                        ex.getMessage().toLowerCase().contains("email")
+                errorMessage.contains("email")
                         ? "Email already exists"
+                        : errorMessage.contains("exchange_type")
+                        ? "Exchange type is not accepted by the database. Restart the API once so constraints are repaired."
                         : "Duplicate or invalid data";
 
         return ResponseEntity

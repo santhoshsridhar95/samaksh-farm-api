@@ -105,7 +105,7 @@ public class CustomerController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','SALES_ADMIN')")
     public ApiResponse<CustomerResponse> softDeleteCustomer(
             @PathVariable Long id,
             Authentication authentication

@@ -1,6 +1,7 @@
 package com.samaksh.farms.analytics.service;
 
 import com.samaksh.farms.analytics.dto.FarmDashboardResponse;
+import com.samaksh.farms.common.time.BusinessTime;
 import com.samaksh.farms.enums.InventoryType;
 import com.samaksh.farms.enums.TransactionType;
 import com.samaksh.farms.customer.repo.CustomerRepository;
@@ -105,7 +106,7 @@ public class FarmDashboardService {
                         .sum();
 
         LocalDate today =
-                LocalDate.now();
+                BusinessTime.today();
 
         return FarmDashboardResponse.builder()
                 .spawnBalance(spawnBalance)

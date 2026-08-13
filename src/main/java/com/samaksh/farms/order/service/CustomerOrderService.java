@@ -1,6 +1,7 @@
 package com.samaksh.farms.order.service;
 
 import com.samaksh.farms.audit.service.AuditService;
+import com.samaksh.farms.common.time.BusinessTime;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
 import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
@@ -93,7 +94,7 @@ public class CustomerOrderService {
                                 request.getRemarks()
                         )
                         .createdAt(
-                                LocalDateTime.now()
+                                BusinessTime.now()
                         )
                         .build();
 
@@ -159,7 +160,7 @@ public class CustomerOrderService {
                                         + order.getOrderCode()
                         )
                         .saleDate(
-                                LocalDateTime.now()
+                                BusinessTime.now()
                         )
                         .build();
 
