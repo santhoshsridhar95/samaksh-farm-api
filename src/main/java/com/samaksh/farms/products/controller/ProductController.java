@@ -54,6 +54,30 @@ public class ProductController {
                 .build();
     }
 
+    @PutMapping("/{id}")
+    public ApiResponse<ProductResponse>
+    updateProduct(
+            @PathVariable Long id,
+            @RequestBody ProductRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<ProductResponse>builder()
+                .success(true)
+                .message(
+                        "Product updated successfully"
+                )
+                .data(
+                        productService.updateProduct(
+                                id,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
+
     @PutMapping("/{id}/disable")
     public ApiResponse<ProductResponse>
     disableProduct(

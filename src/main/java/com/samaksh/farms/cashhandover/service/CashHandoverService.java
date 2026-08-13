@@ -156,14 +156,14 @@ public class CashHandoverService {
             CashTotals totals =
                     totalsByCollector.computeIfAbsent(
                             collectorKey(
-                                    sale.getCreatedByUserId(),
-                                    sale.getCreatedByEmail(),
-                                    sale.getCreatedByName()
+                                    saleCollectorUserId(sale),
+                                    saleCollectorEmail(sale),
+                                    saleCollectorName(sale)
                             ),
                             ignored -> new CashTotals(
-                                    sale.getCreatedByUserId(),
-                                    sale.getCreatedByName(),
-                                    sale.getCreatedByEmail()
+                                    saleCollectorUserId(sale),
+                                    saleCollectorName(sale),
+                                    saleCollectorEmail(sale)
                             )
                     );
 
@@ -296,6 +296,35 @@ public class CashHandoverService {
         }
 
         return "name:" + String.valueOf(name).toLowerCase();
+    }
+
+    private Long saleCollectorUserId(
+            Sale sale
+    ) {
+
+        return sale.getCollectorUserId() == null
+                ? sale.getCreatedByUserId()
+                : sale.getCollectorUserId();
+    }
+
+    private String saleCollectorName(
+            Sale sale
+    ) {
+
+        return sale.getCollectorName() == null ||
+                sale.getCollectorName().isBlank()
+                ? sale.getCreatedByName()
+                : sale.getCollectorName();
+    }
+
+    private String saleCollectorEmail(
+            Sale sale
+    ) {
+
+        return sale.getCollectorEmail() == null ||
+                sale.getCollectorEmail().isBlank()
+                ? sale.getCreatedByEmail()
+                : sale.getCollectorEmail();
     }
 
     private Long currentUserId(

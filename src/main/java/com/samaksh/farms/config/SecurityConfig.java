@@ -51,6 +51,12 @@ public class SecurityConfig {
             SALES_USER
     };
 
+    private static final String[] PRODUCT_MANAGEMENT = {
+            SUPER_ADMIN,
+            FARM_MANAGER,
+            SALES_ADMIN
+    };
+
     private static final String[] DASHBOARD_ROLES = {
             SUPER_ADMIN,
             FARM_MANAGER,
@@ -130,7 +136,8 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         HttpMethod.GET,
                                         "/api/dashboard/**",
-                                        "/api/farm-dashboard/**"
+                                        "/api/farm-dashboard/**",
+                                        "/api/exchange-box-handovers/**"
                                 ).hasAnyRole(DASHBOARD_ROLES)
 
                                 .requestMatchers(
@@ -179,17 +186,22 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         HttpMethod.GET,
                                         "/api/products/**"
-                                ).hasAnyRole(SALES_OPERATIONS)
+                                ).permitAll()
 
                                 .requestMatchers(
                                         HttpMethod.POST,
                                         "/api/products/**"
-                                ).hasAnyRole(FARM_MANAGEMENT)
+                                ).hasAnyRole(PRODUCT_MANAGEMENT)
 
                                 .requestMatchers(
                                         HttpMethod.PUT,
                                         "/api/products/**"
-                                ).hasAnyRole(FARM_MANAGEMENT)
+                                ).hasAnyRole(PRODUCT_MANAGEMENT)
+
+                                .requestMatchers(
+                                        HttpMethod.POST,
+                                        "/api/exchange-box-handovers/**"
+                                ).hasAnyRole(PRODUCT_MANAGEMENT)
 
                                 .requestMatchers(
                                         "/api/customers/**",

@@ -2,6 +2,7 @@ package com.samaksh.farms.products.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.enums.ProductUnitType;
 import com.samaksh.farms.products.dto.ProductRequest;
 import com.samaksh.farms.products.dto.ProductResponse;
 import com.samaksh.farms.products.entity.Product;
@@ -26,19 +27,25 @@ public class ProductService {
             Authentication authentication
     ) {
 
+        validateProductForCreate(request);
+
         Product product =
                 Product.builder()
                         .productCode(
                                 generateProductCode()
                         )
                         .productName(
-                                request.getProductName()
+                                cleaned(request.getProductName())
                         )
                         .unitType(
-                                request.getUnitType()
+                                request.getUnitType() == null
+                                        ? ProductUnitType.KG
+                                        : request.getUnitType()
                         )
                         .standardPrice(
-                                request.getStandardPrice()
+                                request.getStandardPrice() == null
+                                        ? 0D
+                                        : request.getStandardPrice()
                         )
                         .active(true)
                         .createdAt(
@@ -66,6 +73,38 @@ public class ProductService {
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    public ProductResponse updateProduct(
+            Long productId,
+            ProductRequest request,
+            Authentication authentication
+    ) {
+
+        Product product =
+                productRepository.findById(productId)
+                        .orElseThrow(
+                                () ->
+                                        new ResourceNotFoundException(
+                                                "Product",
+                                                productId
+                                        )
+                        );
+
+        applyProductUpdate(product, request);
+
+        Product savedProduct =
+                productRepository.save(product);
+
+        auditService.createAudit(
+                authentication,
+                "PRODUCT",
+                "UPDATE_PRODUCT",
+                savedProduct.getProductCode(),
+                "Product Updated"
+        );
+
+        return mapToResponse(savedProduct);
     }
 
     public ProductResponse disableProduct(
@@ -142,6 +181,55 @@ public class ProductService {
                 .standardPrice(product.getStandardPrice())
                 .active(product.getActive())
                 .build();
+    }
+
+    private void validateProductForCreate(ProductRequest request) {
+
+        if (request == null || cleaned(request.getProductName()).isBlank()) {
+            throw new RuntimeException("Product name is required");
+        }
+
+        validatePrice(request.getStandardPrice());
+    }
+
+    private void applyProductUpdate(
+            Product product,
+            ProductRequest request
+    ) {
+
+        if (request == null) {
+            return;
+        }
+
+        String productName =
+                cleaned(request.getProductName());
+
+        if (!productName.isBlank()) {
+            product.setProductName(productName);
+        }
+
+        if (request.getUnitType() != null) {
+            product.setUnitType(request.getUnitType());
+        }
+
+        if (request.getStandardPrice() != null) {
+            validatePrice(request.getStandardPrice());
+            product.setStandardPrice(request.getStandardPrice());
+        }
+    }
+
+    private void validatePrice(Double price) {
+
+        if (price != null && price < 0) {
+            throw new RuntimeException("Product price cannot be negative");
+        }
+    }
+
+    private String cleaned(String value) {
+
+        return value == null
+                ? ""
+                : value.trim();
     }
 
     private String generateProductCode() {

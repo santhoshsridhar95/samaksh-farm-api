@@ -17,6 +17,7 @@ import com.samaksh.farms.sale.dto.SaleResponse;
 import com.samaksh.farms.sale.entity.Sale;
 import com.samaksh.farms.sale.repo.SaleRepository;
 import com.samaksh.farms.user.entity.User;
+import com.samaksh.farms.user.repo.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
@@ -36,6 +37,8 @@ public class SaleService {
     private final ProductRepository productRepository;
 
     private final AuditService auditService;
+
+    private final UserRepository userRepository;
 
     public SaleResponse createSale(
             SaleRequest request,
@@ -161,11 +164,18 @@ public class SaleService {
             );
         }
 
+        CashCollector cashCollector =
+                resolveCashCollector(
+                        request,
+                        authentication
+                );
+
         double remainingCollection =
                 applyCollectionToPreviousSales(
                         customer.getId(),
                         receivedToday,
-                        authentication
+                        authentication,
+                        cashCollector
                 );
 
         double amountAppliedToCurrentSale =
@@ -234,6 +244,15 @@ public class SaleService {
                                 currentUserEmail(
                                         authentication
                                 )
+                        )
+                        .collectorUserId(
+                                cashCollector.userId()
+                        )
+                        .collectorName(
+                                cashCollector.name()
+                        )
+                        .collectorEmail(
+                                cashCollector.email()
                         )
                         .saleDate(
                                 BusinessTime.now()
@@ -489,7 +508,8 @@ public class SaleService {
     private double applyCollectionToPreviousSales(
             Long customerId,
             double collectionAmount,
-            Authentication authentication
+            Authentication authentication,
+            CashCollector cashCollector
     ) {
 
         if (collectionAmount <= 0) {
@@ -564,6 +584,15 @@ public class SaleService {
                             ),
                             newCollected
                     )
+            );
+            unpaidSale.setCollectorUserId(
+                    cashCollector.userId()
+            );
+            unpaidSale.setCollectorName(
+                    cashCollector.name()
+            );
+            unpaidSale.setCollectorEmail(
+                    cashCollector.email()
             );
             applyUpdatedBy(
                     unpaidSale,
@@ -698,6 +727,113 @@ public class SaleService {
         );
     }
 
+    private CashCollector resolveCashCollector(
+            SaleRequest request,
+            Authentication authentication
+    ) {
+
+        User currentUser =
+                currentUser(authentication);
+
+        if (isSuperAdmin(currentUser) &&
+                request.getCollectorUserId() != null) {
+
+            User collector =
+                    userRepository.findById(request.getCollectorUserId())
+                            .orElseThrow(
+                                    () -> new ResourceNotFoundException(
+                                            "User",
+                                            request.getCollectorUserId()
+                                    )
+                            );
+
+            return new CashCollector(
+                    collector.getId(),
+                    collector.getName(),
+                    collector.getEmail()
+            );
+        }
+
+        if (isSuperAdmin(currentUser) &&
+                request.getCollectorName() != null &&
+                !request.getCollectorName().isBlank()) {
+
+            return new CashCollector(
+                    request.getCollectorUserId(),
+                    request.getCollectorName().trim(),
+                    optionalText(request.getCollectorEmail())
+            );
+        }
+
+        return new CashCollector(
+                currentUserId(authentication),
+                currentUserName(authentication),
+                currentUserEmail(authentication)
+        );
+    }
+
+    private User currentUser(
+            Authentication authentication
+    ) {
+
+        if (authentication != null &&
+                authentication.getPrincipal() instanceof User user) {
+            return user;
+        }
+
+        return null;
+    }
+
+    private boolean isSuperAdmin(
+            User user
+    ) {
+
+        return user != null &&
+                user.getRole() != null &&
+                "SUPER_ADMIN".equals(user.getRole().name());
+    }
+
+    private String optionalText(
+            String value
+    ) {
+
+        if (value == null ||
+                value.isBlank()) {
+            return null;
+        }
+
+        return value.trim();
+    }
+
+    private Long saleCollectorUserId(
+            Sale sale
+    ) {
+
+        return sale.getCollectorUserId() == null
+                ? sale.getCreatedByUserId()
+                : sale.getCollectorUserId();
+    }
+
+    private String saleCollectorName(
+            Sale sale
+    ) {
+
+        return sale.getCollectorName() == null ||
+                sale.getCollectorName().isBlank()
+                ? sale.getCreatedByName()
+                : sale.getCollectorName();
+    }
+
+    private String saleCollectorEmail(
+            Sale sale
+    ) {
+
+        return sale.getCollectorEmail() == null ||
+                sale.getCollectorEmail().isBlank()
+                ? sale.getCreatedByEmail()
+                : sale.getCollectorEmail();
+    }
+
     private Long currentUserId(
             Authentication authentication
     ) {
@@ -736,6 +872,12 @@ public class SaleService {
 
         return "SYSTEM";
     }
+
+    private record CashCollector(
+            Long userId,
+            String name,
+            String email
+    ) {}
 
     private Product resolveProduct(
             SaleRequest request,
@@ -887,6 +1029,15 @@ public class SaleService {
                 )
                 .createdByEmail(
                         sale.getCreatedByEmail()
+                )
+                .collectorUserId(
+                        saleCollectorUserId(sale)
+                )
+                .collectorName(
+                        saleCollectorName(sale)
+                )
+                .collectorEmail(
+                        saleCollectorEmail(sale)
                 )
                 .updatedByUserId(
                         sale.getUpdatedByUserId()
