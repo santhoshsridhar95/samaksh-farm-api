@@ -40,6 +40,18 @@ public class SaleService {
             Authentication authentication
     ) {
 
+        if (request.getCustomerId() == null) {
+            throw new IllegalArgumentException(
+                    "Shop is required"
+            );
+        }
+
+        if (request.getProductId() == null) {
+            throw new IllegalArgumentException(
+                    "Product is required"
+            );
+        }
+
         Customer customer =
                 customerRepository.findById(
                         request.getCustomerId()
