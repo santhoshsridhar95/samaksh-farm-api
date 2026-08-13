@@ -11,6 +11,8 @@ public class SaleRequest {
 
     private Long productId;
 
+    private String productName;
+
     private Double quantity;
 
     private Double unitPrice;

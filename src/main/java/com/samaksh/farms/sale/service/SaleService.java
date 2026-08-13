@@ -6,6 +6,7 @@ import com.samaksh.farms.customer.entity.Customer;
 import com.samaksh.farms.customer.repo.CustomerRepository;
 import com.samaksh.farms.enums.ExchangeType;
 import com.samaksh.farms.enums.PaymentStatus;
+import com.samaksh.farms.enums.ProductUnitType;
 import com.samaksh.farms.products.entity.Product;
 import com.samaksh.farms.products.repo.ProductRepository;
 import com.samaksh.farms.sale.dto.PagedResponse;
@@ -46,12 +47,6 @@ public class SaleService {
             );
         }
 
-        if (request.getProductId() == null) {
-            throw new IllegalArgumentException(
-                    "Product is required"
-            );
-        }
-
         Customer customer =
                 customerRepository.findById(
                         request.getCustomerId()
@@ -59,16 +54,6 @@ public class SaleService {
                         () -> new ResourceNotFoundException(
                                 "Customer",
                                 request.getCustomerId()
-                        )
-                );
-
-        Product product =
-                productRepository.findById(
-                        request.getProductId()
-                ).orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                "Product",
-                                request.getProductId()
                         )
                 );
 
@@ -81,6 +66,12 @@ public class SaleService {
                 request.getUnitPrice() == null
                         ? 0
                         : request.getUnitPrice();
+
+        Product product =
+                resolveProduct(
+                        request,
+                        unitPrice
+                );
 
         double totalAmount =
                 quantity * unitPrice;
@@ -706,6 +697,76 @@ public class SaleService {
         }
 
         return "SYSTEM";
+    }
+
+    private Product resolveProduct(
+            SaleRequest request,
+            double unitPrice
+    ) {
+
+        if (request.getProductId() != null) {
+
+            return productRepository.findById(
+                    request.getProductId()
+            ).orElseThrow(
+                    () -> new ResourceNotFoundException(
+                            "Product",
+                            request.getProductId()
+                    )
+            );
+        }
+
+        String productName =
+                request.getProductName() == null
+                        ? ""
+                        : request.getProductName().trim();
+
+        if (productName.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Product is required"
+            );
+        }
+
+        return productRepository.findFirstByProductNameIgnoreCase(
+                        productName
+                )
+                .map(product -> {
+                    if (product.getActive() == null ||
+                            !product.getActive()) {
+                        product.setActive(true);
+                    }
+
+                    if (product.getStandardPrice() == null &&
+                            unitPrice > 0) {
+                        product.setStandardPrice(unitPrice);
+                    }
+
+                    return productRepository.save(product);
+                })
+                .orElseGet(() -> productRepository.save(
+                        Product.builder()
+                                .productCode(generateProductCode())
+                                .productName(productName)
+                                .unitType(ProductUnitType.BOX)
+                                .standardPrice(unitPrice > 0
+                                        ? unitPrice
+                                        : 50)
+                                .active(true)
+                                .createdAt(LocalDateTime.now())
+                                .build()
+                ));
+    }
+
+    private String generateProductCode() {
+
+        long count =
+                productRepository.count() + 1;
+
+        return "SF-PROD-"
+                + String.format(
+                "%03d",
+                count
+        );
     }
 
     private SaleResponse mapToResponse(

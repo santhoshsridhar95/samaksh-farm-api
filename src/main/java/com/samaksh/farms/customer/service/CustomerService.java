@@ -38,16 +38,16 @@ public class CustomerService {
                                 request.getCustomerName()
                         )
                         .contactPerson(
-                                request.getContactPerson()
+                                optionalText(request.getContactPerson())
                         )
                         .phoneNumber(
-                                request.getPhoneNumber()
+                                optionalText(request.getPhoneNumber())
                         )
                         .email(
-                                request.getEmail()
+                                optionalText(request.getEmail())
                         )
                         .address(
-                                request.getAddress()
+                                optionalText(request.getAddress())
                         )
                         .location(
                                 defaultLocation(
@@ -116,16 +116,16 @@ public class CustomerService {
                 request.getCustomerName()
         );
         customer.setContactPerson(
-                request.getContactPerson()
+                optionalText(request.getContactPerson())
         );
         customer.setPhoneNumber(
-                request.getPhoneNumber()
+                optionalText(request.getPhoneNumber())
         );
         customer.setEmail(
-                request.getEmail()
+                optionalText(request.getEmail())
         );
         customer.setAddress(
-                request.getAddress()
+                optionalText(request.getAddress())
         );
         customer.setLocation(
                 defaultLocation(
@@ -321,6 +321,19 @@ public class CustomerService {
         }
 
         return location;
+    }
+
+    private String optionalText(
+            String value
+    ) {
+
+        if (value == null ||
+                value.isBlank()) {
+
+            return null;
+        }
+
+        return value.trim();
     }
 
     private List<String> cleanProducts(

@@ -14,8 +14,8 @@ public class CustomerRequest {
     private String contactPerson;
 
     @Pattern(
-            regexp = "^[0-9]{10}$",
-            message = "Phone number must be exactly 10 digits"
+            regexp = "^$|^[0-9]{10}$",
+            message = "Phone number must be blank or exactly 10 digits"
     )
     private String phoneNumber;
 
