@@ -28,6 +28,10 @@ public class SecurityConfig {
 
     private static final String SALES_USER = "SALES_USER";
 
+    private static final String SALES_ADMIN = "SALES_ADMIN";
+
+    private static final String SALES_EMPLOYEE = "SALES_EMPLOYEE";
+
     private static final String[] FARM_OPERATIONS = {
             SUPER_ADMIN,
             FARM_MANAGER,
@@ -42,12 +46,16 @@ public class SecurityConfig {
     private static final String[] SALES_OPERATIONS = {
             SUPER_ADMIN,
             FARM_MANAGER,
+            SALES_ADMIN,
+            SALES_EMPLOYEE,
             SALES_USER
     };
 
     private static final String[] DASHBOARD_ROLES = {
             SUPER_ADMIN,
             FARM_MANAGER,
+            SALES_ADMIN,
+            SALES_EMPLOYEE,
             SALES_USER
     };
 
