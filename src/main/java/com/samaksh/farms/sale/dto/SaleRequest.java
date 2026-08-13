@@ -4,6 +4,8 @@ import com.samaksh.farms.enums.ExchangeType;
 import com.samaksh.farms.enums.PaymentStatus;
 import lombok.Data;
 
+import java.time.LocalDate;
+
 @Data
 public class SaleRequest {
 
@@ -32,6 +34,8 @@ public class SaleRequest {
     private Double exchangeBoxes;
 
     private Double returnedBoxes;
+
+    private LocalDate deliveryDate;
 
     private PaymentStatus paymentStatus;
 
