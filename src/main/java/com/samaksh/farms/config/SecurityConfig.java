@@ -194,7 +194,8 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         "/api/customers/**",
                                         "/api/orders/**",
-                                        "/api/sales/**"
+                                        "/api/sales/**",
+                                        "/api/cash-handovers/**"
                                 ).hasAnyRole(SALES_OPERATIONS)
 
                                 .anyRequest()

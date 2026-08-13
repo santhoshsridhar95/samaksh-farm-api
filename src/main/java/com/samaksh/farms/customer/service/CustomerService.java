@@ -32,10 +32,12 @@ public class CustomerService {
             Authentication authentication
     ) {
 
+        validateCustomerRequest(request);
+
         Customer customer =
                 Customer.builder()
                         .customerName(
-                                request.getCustomerName()
+                                request.getCustomerName().trim()
                         )
                         .contactPerson(
                                 optionalText(request.getContactPerson())
@@ -55,7 +57,7 @@ public class CustomerService {
                                 )
                         )
                         .shopCategory(
-                                request.getShopCategory()
+                                request.getShopCategory().trim()
                         )
                         .products(
                                 cleanProducts(
@@ -75,7 +77,9 @@ public class CustomerService {
                                 request.getShopkeeperSellingPrice()
                         )
                         .exchangeType(
-                                request.getExchangeType()
+                                request.getExchangeType() == null
+                                        ? com.samaksh.farms.enums.ExchangeType.NONE
+                                        : request.getExchangeType()
                         )
                         .active(true)
                         .createdAt(
@@ -103,6 +107,8 @@ public class CustomerService {
             Authentication authentication
     ) {
 
+        validateCustomerRequest(request);
+
         Customer customer =
                 customerRepository.findById(id)
                         .orElseThrow(
@@ -113,7 +119,7 @@ public class CustomerService {
                         );
 
         customer.setCustomerName(
-                request.getCustomerName()
+                request.getCustomerName().trim()
         );
         customer.setContactPerson(
                 optionalText(request.getContactPerson())
@@ -133,7 +139,7 @@ public class CustomerService {
                 )
         );
         customer.setShopCategory(
-                request.getShopCategory()
+                request.getShopCategory().trim()
         );
         customer.setProducts(
                 cleanProducts(
@@ -153,7 +159,9 @@ public class CustomerService {
                 request.getShopkeeperSellingPrice()
         );
         customer.setExchangeType(
-                request.getExchangeType()
+                request.getExchangeType() == null
+                        ? com.samaksh.farms.enums.ExchangeType.NONE
+                        : request.getExchangeType()
         );
         customer.setActive(
                 request.getActive() == null
@@ -321,6 +329,41 @@ public class CustomerService {
         }
 
         return location;
+    }
+
+    private void validateCustomerRequest(
+            CustomerRequest request
+    ) {
+
+        if (request.getCustomerName() == null ||
+                request.getCustomerName().isBlank()) {
+            throw new IllegalArgumentException("Shop name is required");
+        }
+
+        if (request.getShopCategory() == null ||
+                request.getShopCategory().isBlank()) {
+            throw new IllegalArgumentException("Shop category is required");
+        }
+
+        if (request.getMinimumBoxesPerDay() != null &&
+                request.getMinimumBoxesPerDay() < 0) {
+            throw new IllegalArgumentException("Minimum boxes cannot be negative");
+        }
+
+        if (request.getDailyReturnedBoxes() != null &&
+                request.getDailyReturnedBoxes() < 0) {
+            throw new IllegalArgumentException("Returned boxes cannot be negative");
+        }
+
+        if (request.getDefaultBoxPrice() != null &&
+                request.getDefaultBoxPrice() < 0) {
+            throw new IllegalArgumentException("Box price cannot be negative");
+        }
+
+        if (request.getShopkeeperSellingPrice() != null &&
+                request.getShopkeeperSellingPrice() < 0) {
+            throw new IllegalArgumentException("Shopkeeper selling price cannot be negative");
+        }
     }
 
     private String optionalText(

@@ -47,6 +47,11 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         repairUsersRoleConstraint();
         repairUserExtraRolesConstraint();
         repairUsersApprovalStatusConstraint();
+        repairCustomerExchangeTypeConstraint();
+        repairSalesExchangeTypeConstraint();
+        repairSalesPaymentStatusConstraint();
+        repairProductUnitTypeConstraint();
+        repairOrderStatusConstraint();
     }
 
     private void repairUsersRoleConstraint() {
@@ -174,6 +179,163 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
                             quoteIdentifier(constraint)
             );
         }
+    }
+
+    private void repairCustomerExchangeTypeConstraint() {
+
+        repairEnumConstraint(
+                "customers",
+                "exchange_type",
+                "customers_exchange_type_check",
+                List.of(
+                        "NONE",
+                        "ONE_ON_ONE",
+                        "TWO_ON_ONE"
+                )
+        );
+
+        LOGGER.info("Verified customers_exchange_type_check constraint");
+    }
+
+    private void repairSalesExchangeTypeConstraint() {
+
+        repairEnumConstraint(
+                "sales",
+                "exchange_type",
+                "sales_exchange_type_check",
+                List.of(
+                        "NONE",
+                        "ONE_ON_ONE",
+                        "TWO_ON_ONE"
+                )
+        );
+
+        LOGGER.info("Verified sales_exchange_type_check constraint");
+    }
+
+    private void repairSalesPaymentStatusConstraint() {
+
+        repairEnumConstraint(
+                "sales",
+                "payment_status",
+                "sales_payment_status_check",
+                List.of(
+                        "PAID",
+                        "PENDING",
+                        "PARTIAL"
+                )
+        );
+
+        LOGGER.info("Verified sales_payment_status_check constraint");
+    }
+
+    private void repairProductUnitTypeConstraint() {
+
+        repairEnumConstraint(
+                "products",
+                "unit_type",
+                "products_unit_type_check",
+                List.of(
+                        "KG",
+                        "BOX",
+                        "PACK"
+                )
+        );
+
+        LOGGER.info("Verified products_unit_type_check constraint");
+    }
+
+    private void repairOrderStatusConstraint() {
+
+        repairEnumConstraint(
+                "customer_orders",
+                "status",
+                "customer_orders_status_check",
+                List.of(
+                        "PENDING",
+                        "PARTIALLY_FULFILLED",
+                        "FULFILLED",
+                        "CANCELLED"
+                )
+        );
+
+        LOGGER.info("Verified customer_orders_status_check constraint");
+    }
+
+    private void repairEnumConstraint(
+            String tableName,
+            String columnName,
+            String constraintName,
+            List<String> allowedValues
+    ) {
+
+        if (!tableExists(tableName)) {
+            return;
+        }
+
+        dropTableCheckConstraintsContaining(
+                tableName,
+                columnName
+        );
+
+        String quotedValues =
+                allowedValues.stream()
+                        .map(value -> "'" + value.replace("'", "''") + "'")
+                        .reduce((left, right) -> left + ", " + right)
+                        .orElse("''");
+
+        jdbcTemplate.execute(
+                "ALTER TABLE " + quoteIdentifier(tableName) +
+                        " ADD CONSTRAINT " + quoteIdentifier(constraintName) +
+                        " CHECK (" + columnName + " IS NULL OR " + columnName +
+                        " IN (" + quotedValues + "))"
+        );
+    }
+
+    private void dropTableCheckConstraintsContaining(
+            String tableName,
+            String columnName
+    ) {
+
+        if (!tableExists(tableName)) {
+            return;
+        }
+
+        List<String> checkConstraints =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT conname
+                        FROM pg_constraint
+                        WHERE conrelid = ('public.' || ?)::regclass
+                        AND contype = 'c'
+                        AND lower(pg_get_constraintdef(oid)) LIKE ?
+                        """,
+                        String.class,
+                        tableName,
+                        "%" + columnName.toLowerCase(Locale.ROOT) + "%"
+                );
+
+        for (String constraint : checkConstraints) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE " + quoteIdentifier(tableName) +
+                            " DROP CONSTRAINT IF EXISTS " +
+                            quoteIdentifier(constraint)
+            );
+        }
+    }
+
+    private boolean tableExists(
+            String tableName
+    ) {
+
+        Boolean exists =
+                jdbcTemplate.queryForObject(
+                        "SELECT to_regclass(?) IS NOT NULL",
+                        Boolean.class,
+                        "public." + tableName
+                );
+
+        return Boolean.TRUE.equals(exists);
     }
 
     private String quoteIdentifier(
