@@ -76,6 +76,24 @@ public class EntitlementService {
             );
         }
 
+        if (role == Role.SALES_ADMIN) {
+
+            return List.of(
+                    MANAGE_SHOPS,
+                    CREATE_DELIVERY,
+                    VIEW_LEDGER,
+                    VIEW_CONFIDENTIAL
+            );
+        }
+
+        if (role == Role.SALES_EMPLOYEE || role == Role.SALES_USER) {
+
+            return List.of(
+                    MANAGE_SHOPS,
+                    CREATE_DELIVERY
+            );
+        }
+
         return entitlementRepository.findByRoleAndEnabledTrue(role)
                 .stream()
                 .map(Entitlement::getPermissionKey)
