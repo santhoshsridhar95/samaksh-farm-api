@@ -2,6 +2,8 @@ package com.samaksh.farms.customer.service;
 
 import com.samaksh.farms.audit.service.AuditService;
 import com.samaksh.farms.common.exception.ResourceNotFoundException;
+import com.samaksh.farms.common.time.BusinessTime;
+import com.samaksh.farms.config.DatabaseConstraintRepair;
 import com.samaksh.farms.customer.dto.CustomerRequest;
 import com.samaksh.farms.customer.dto.CustomerResponse;
 import com.samaksh.farms.customer.dto.PagedResponse;
@@ -15,7 +17,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
@@ -27,12 +29,16 @@ public class CustomerService {
 
     private final AuditService auditService;
 
+    private final DatabaseConstraintRepair databaseConstraintRepair;
+
     public CustomerResponse createCustomer(
             CustomerRequest request,
             Authentication authentication
     ) {
 
         validateCustomerRequest(request);
+        databaseConstraintRepair.repairCustomerOptionalContactConstraints();
+        databaseConstraintRepair.repairCustomerExchangeTypeConstraint();
 
         Customer customer =
                 Customer.builder()
@@ -83,7 +89,7 @@ public class CustomerService {
                         )
                         .active(true)
                         .createdAt(
-                                LocalDateTime.now()
+                                BusinessTime.now()
                         )
                         .build();
 
@@ -108,6 +114,8 @@ public class CustomerService {
     ) {
 
         validateCustomerRequest(request);
+        databaseConstraintRepair.repairCustomerOptionalContactConstraints();
+        databaseConstraintRepair.repairCustomerExchangeTypeConstraint();
 
         Customer customer =
                 customerRepository.findById(id)
@@ -392,6 +400,10 @@ public class CustomerService {
                 .map(String::trim)
                 .filter(product -> !product.isBlank())
                 .distinct()
-                .toList();
+                .collect(
+                        java.util.stream.Collectors.toCollection(
+                                ArrayList::new
+                        )
+                );
     }
 }

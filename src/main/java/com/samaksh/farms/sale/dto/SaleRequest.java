@@ -19,6 +19,12 @@ public class SaleRequest {
 
     private Double amountCollected;
 
+    private Long collectorUserId;
+
+    private String collectorName;
+
+    private String collectorEmail;
+
     private Double shopkeeperSellingPrice;
 
     private ExchangeType exchangeType;

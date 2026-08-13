@@ -47,6 +47,7 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         repairUsersRoleConstraint();
         repairUserExtraRolesConstraint();
         repairUsersApprovalStatusConstraint();
+        repairCustomerOptionalContactConstraints();
         repairCustomerExchangeTypeConstraint();
         repairSalesExchangeTypeConstraint();
         repairSalesPaymentStatusConstraint();
@@ -181,7 +182,7 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         }
     }
 
-    private void repairCustomerExchangeTypeConstraint() {
+    public void repairCustomerExchangeTypeConstraint() {
 
         repairEnumConstraint(
                 "customers",
@@ -195,6 +196,27 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
         );
 
         LOGGER.info("Verified customers_exchange_type_check constraint");
+    }
+
+    public void repairCustomerOptionalContactConstraints() {
+
+        if (!tableExists("customers")) {
+            return;
+        }
+
+        dropCustomerUniqueConstraintsContaining("email");
+        dropCustomerUniqueConstraintsContaining("phone");
+        dropCustomerUniqueConstraintsContaining("phone_number");
+        dropCustomerUniqueIndexesContaining("email");
+        dropCustomerUniqueIndexesContaining("phone");
+        dropCustomerUniqueIndexesContaining("phone_number");
+
+        dropCustomerColumnNotNull("contact_person");
+        dropCustomerColumnNotNull("phone_number");
+        dropCustomerColumnNotNull("email");
+        dropCustomerColumnNotNull("address");
+
+        LOGGER.info("Verified optional customer contact fields");
     }
 
     private void repairSalesExchangeTypeConstraint() {
@@ -320,6 +342,93 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
                     "ALTER TABLE " + quoteIdentifier(tableName) +
                             " DROP CONSTRAINT IF EXISTS " +
                             quoteIdentifier(constraint)
+            );
+        }
+    }
+
+    private void dropCustomerUniqueConstraintsContaining(
+            String columnName
+    ) {
+
+        List<String> uniqueConstraints =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT conname
+                        FROM pg_constraint
+                        WHERE conrelid = 'public.customers'::regclass
+                        AND contype = 'u'
+                        AND lower(pg_get_constraintdef(oid)) LIKE ?
+                        """,
+                        String.class,
+                        "%" + columnName.toLowerCase(Locale.ROOT) + "%"
+                );
+
+        for (String constraint : uniqueConstraints) {
+            jdbcTemplate.execute(
+                    "ALTER TABLE customers DROP CONSTRAINT IF EXISTS " +
+                            quoteIdentifier(constraint)
+            );
+        }
+    }
+
+    private void dropCustomerColumnNotNull(
+            String columnName
+    ) {
+
+        Boolean columnExists =
+                jdbcTemplate.queryForObject(
+                        """
+                        SELECT EXISTS (
+                            SELECT 1
+                            FROM information_schema.columns
+                            WHERE table_schema = 'public'
+                            AND table_name = 'customers'
+                            AND column_name = ?
+                        )
+                        """,
+                        Boolean.class,
+                        columnName
+                );
+
+        if (!Boolean.TRUE.equals(columnExists)) {
+            return;
+        }
+
+        jdbcTemplate.execute(
+                "ALTER TABLE customers ALTER COLUMN " +
+                        quoteIdentifier(columnName) +
+                " DROP NOT NULL"
+        );
+    }
+
+    private void dropCustomerUniqueIndexesContaining(
+            String columnName
+    ) {
+
+        List<String> uniqueIndexes =
+                jdbcTemplate.queryForList(
+                        """
+                        SELECT index_class.relname
+                        FROM pg_index index_info
+                        JOIN pg_class index_class
+                          ON index_class.oid = index_info.indexrelid
+                        JOIN pg_class table_class
+                          ON table_class.oid = index_info.indrelid
+                        JOIN pg_namespace namespace
+                          ON namespace.oid = table_class.relnamespace
+                        WHERE namespace.nspname = 'public'
+                        AND table_class.relname = 'customers'
+                        AND index_info.indisunique = true
+                        AND index_info.indisprimary = false
+                        AND lower(pg_get_indexdef(index_info.indexrelid)) LIKE ?
+                        """,
+                        String.class,
+                        "%" + columnName.toLowerCase(Locale.ROOT) + "%"
+                );
+
+        for (String indexName : uniqueIndexes) {
+            jdbcTemplate.execute(
+                    "DROP INDEX IF EXISTS " + quoteIdentifier(indexName)
             );
         }
     }

@@ -55,6 +55,12 @@ public class SaleResponse {
 
     private String createdByEmail;
 
+    private Long collectorUserId;
+
+    private String collectorName;
+
+    private String collectorEmail;
+
     private Long updatedByUserId;
 
     private String updatedByName;
