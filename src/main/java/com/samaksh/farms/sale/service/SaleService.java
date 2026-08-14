@@ -23,6 +23,7 @@ import org.springframework.data.domain.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -193,6 +194,12 @@ public class SaleService {
                         amountAppliedToCurrentSale
                 );
 
+        LocalDateTime saleDate =
+                resolveSaleDate(
+                        request,
+                        authentication
+                );
+
         Sale sale =
                 Sale.builder()
                         .customer(customer)
@@ -255,7 +262,7 @@ public class SaleService {
                                 cashCollector.email()
                         )
                         .saleDate(
-                                BusinessTime.now()
+                                saleDate
                         )
                         .build();
 
@@ -486,6 +493,208 @@ public class SaleService {
         );
     }
 
+    public SaleResponse updateSaleEntry(
+            Long saleId,
+            SaleRequest request,
+            Authentication authentication
+    ) {
+
+        User currentUser =
+                currentUser(authentication);
+
+        if (!isSuperAdmin(currentUser)) {
+            throw new IllegalArgumentException(
+                    "Only super admin can edit delivery entries"
+            );
+        }
+
+        Sale sale =
+                saleRepository.findById(
+                        saleId
+                ).orElseThrow(
+                        () -> new ResourceNotFoundException(
+                                "Sale",
+                                saleId
+                        )
+                );
+
+        Customer customer =
+                request.getCustomerId() == null
+                        ? sale.getCustomer()
+                        : customerRepository.findById(
+                                request.getCustomerId()
+                        ).orElseThrow(
+                                () -> new ResourceNotFoundException(
+                                        "Customer",
+                                        request.getCustomerId()
+                                )
+                        );
+
+        double quantity =
+                request.getQuantity() == null
+                        ? saleQuantity(sale)
+                        : request.getQuantity();
+
+        double unitPrice =
+                request.getUnitPrice() == null
+                        ? saleUnitPrice(sale)
+                        : request.getUnitPrice();
+
+        if (quantity <= 0) {
+            throw new IllegalArgumentException(
+                    "Boxes must be greater than 0"
+            );
+        }
+
+        if (unitPrice < 0) {
+            throw new IllegalArgumentException(
+                    "Unit price cannot be negative"
+            );
+        }
+
+        ExchangeType exchangeType =
+                request.getExchangeType() == null
+                        ? sale.getExchangeType()
+                        : request.getExchangeType();
+
+        if (exchangeType == null) {
+            exchangeType = ExchangeType.NONE;
+        }
+
+        double exchangeBoxes =
+                request.getExchangeBoxes() == null
+                        ? safeDouble(sale.getExchangeBoxes())
+                        : request.getExchangeBoxes();
+
+        if (exchangeBoxes < 0) {
+            throw new IllegalArgumentException(
+                    "Exchange boxes cannot be negative"
+            );
+        }
+
+        double returnedBoxes =
+                request.getReturnedBoxes() == null
+                        ? safeDouble(sale.getReturnedBoxes())
+                        : request.getReturnedBoxes();
+
+        if (returnedBoxes < 0) {
+            throw new IllegalArgumentException(
+                    "Returned boxes cannot be negative"
+            );
+        }
+
+        Double shopkeeperSellingPrice =
+                request.getShopkeeperSellingPrice() == null
+                        ? sale.getShopkeeperSellingPrice()
+                        : request.getShopkeeperSellingPrice();
+
+        if (shopkeeperSellingPrice != null &&
+                shopkeeperSellingPrice < 0) {
+            throw new IllegalArgumentException(
+                    "Shopkeeper selling price cannot be negative"
+            );
+        }
+
+        Product product =
+                resolveProduct(
+                        request,
+                        unitPrice
+                );
+
+        double billableAmount =
+                Math.max(
+                        0,
+                        quantity * unitPrice - exchangeCredit(
+                                exchangeType,
+                                exchangeBoxes,
+                                unitPrice
+                        )
+                );
+
+        double amountCollected =
+                request.getAmountCollected() == null
+                        ? saleCollected(sale)
+                        : request.getAmountCollected();
+
+        if (amountCollected < 0) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be negative"
+            );
+        }
+
+        if (amountCollected > billableAmount) {
+            throw new IllegalArgumentException(
+                    "Collected amount cannot be greater than billable amount"
+            );
+        }
+
+        double pendingAmount =
+                Math.max(
+                        0,
+                        billableAmount - amountCollected
+                );
+
+        sale.setCustomer(customer);
+        sale.setProduct(product);
+        sale.setQuantity(quantity);
+        sale.setUnitPrice(unitPrice);
+        sale.setTotalAmount(billableAmount);
+        sale.setAmountCollected(amountCollected);
+        sale.setPendingAmount(pendingAmount);
+        sale.setShopkeeperSellingPrice(shopkeeperSellingPrice);
+        sale.setExchangeType(exchangeType);
+        sale.setExchangeBoxes(exchangeBoxes);
+        sale.setReturnedBoxes(returnedBoxes);
+        sale.setPaymentStatus(
+                resolvePaymentStatus(
+                        billableAmount,
+                        amountCollected
+                )
+        );
+
+        if (request.getDeliveryDate() != null) {
+            sale.setSaleDate(
+                    LocalDateTime.of(
+                            request.getDeliveryDate(),
+                            sale.getSaleDate() == null
+                                    ? BusinessTime.now().toLocalTime()
+                                    : sale.getSaleDate().toLocalTime()
+                    )
+            );
+        }
+
+        sale.setRemarks(request.getRemarks());
+
+        applyUpdatedBy(
+                sale,
+                authentication
+        );
+
+        Sale savedSale =
+                saleRepository.save(
+                        sale
+                );
+
+        auditService.createAudit(
+                authentication,
+                "SALE",
+                "UPDATE_SALE_ENTRY",
+                savedSale.getId().toString(),
+                "Delivery entry corrected for "
+                        + savedSale.getCustomer().getCustomerName()
+                        + ": boxes "
+                        + quantity
+                        + ", bill Rs. "
+                        + billableAmount
+                        + ", collected Rs. "
+                        + amountCollected
+        );
+
+        return mapToResponse(
+                savedSale
+        );
+    }
+
     private PaymentStatus resolvePaymentStatus(
             double totalAmount,
             double amountCollected
@@ -690,6 +899,33 @@ public class SaleService {
                 : sale.getAmountCollected();
     }
 
+    private double saleQuantity(
+            Sale sale
+    ) {
+
+        return sale.getQuantity() == null
+                ? 0
+                : sale.getQuantity();
+    }
+
+    private double saleUnitPrice(
+            Sale sale
+    ) {
+
+        return sale.getUnitPrice() == null
+                ? 0
+                : sale.getUnitPrice();
+    }
+
+    private double safeDouble(
+            Double value
+    ) {
+
+        return value == null
+                ? 0
+                : value;
+    }
+
     private double salePending(
             Sale sale
     ) {
@@ -769,6 +1005,29 @@ public class SaleService {
                 currentUserId(authentication),
                 currentUserName(authentication),
                 currentUserEmail(authentication)
+        );
+    }
+
+    private LocalDateTime resolveSaleDate(
+            SaleRequest request,
+            Authentication authentication
+    ) {
+
+        User currentUser =
+                currentUser(authentication);
+
+        if (!isSuperAdmin(currentUser) ||
+                request.getDeliveryDate() == null) {
+            return BusinessTime.now();
+        }
+
+        LocalDate deliveryDate =
+                request.getDeliveryDate();
+
+        return LocalDateTime.of(
+                deliveryDate,
+                BusinessTime.now()
+                        .toLocalTime()
         );
     }
 

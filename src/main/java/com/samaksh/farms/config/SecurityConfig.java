@@ -214,6 +214,11 @@ public class SecurityConfig {
                                 ).hasAnyRole(PRODUCT_MANAGEMENT)
 
                                 .requestMatchers(
+                                        HttpMethod.PUT,
+                                        "/api/sales/*/entry"
+                                ).hasRole(SUPER_ADMIN)
+
+                                .requestMatchers(
                                         "/api/customers/**",
                                         "/api/orders/**",
                                         "/api/sales/**",

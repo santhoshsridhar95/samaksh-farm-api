@@ -103,4 +103,27 @@ public class SaleController {
                 )
                 .build();
     }
+
+    @PutMapping("/{saleId}/entry")
+    public ApiResponse<SaleResponse> updateSaleEntry(
+            @PathVariable Long saleId,
+            @RequestBody SaleRequest request,
+            Authentication authentication
+    ) {
+
+        return ApiResponse
+                .<SaleResponse>builder()
+                .success(true)
+                .message(
+                        "Sale entry updated successfully"
+                )
+                .data(
+                        saleService.updateSaleEntry(
+                                saleId,
+                                request,
+                                authentication
+                        )
+                )
+                .build();
+    }
 }
