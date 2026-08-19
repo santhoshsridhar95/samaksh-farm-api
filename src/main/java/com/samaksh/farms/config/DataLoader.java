@@ -33,6 +33,9 @@ public class DataLoader implements CommandLineRunner {
     @Value("${app.bootstrap.admin.name:Samaksh Farms Admin}")
     private String adminName;
 
+    @Value("${app.bootstrap.admin.enabled:false}")
+    private boolean bootstrapAdminEnabled;
+
     public DataLoader(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder
@@ -44,16 +47,16 @@ public class DataLoader implements CommandLineRunner {
     @Override
     public void run(String... args) {
 
-        if (hasBootstrapAdminConfig()) {
-            upsertBootstrapAdmin();
+        if (!bootstrapAdminEnabled) {
+            log.info(
+                    "Bootstrap SUPER_ADMIN upsert skipped. Enable BOOTSTRAP_ADMIN_ENABLED=true only when resetting the bootstrap admin."
+            );
             return;
         }
 
-        if (userRepository.count() == 0) {
-
-            log.warn(
-                    "No users exist. Configure app.bootstrap.admin.email and app.bootstrap.admin.password to bootstrap the first SUPER_ADMIN."
-            );
+        if (hasBootstrapAdminConfig()) {
+            upsertBootstrapAdmin();
+            return;
         }
     }
 

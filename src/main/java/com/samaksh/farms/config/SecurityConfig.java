@@ -95,6 +95,7 @@ public class SecurityConfig {
                                         "/api/auth/verify-email",
                                         "/api/auth/google",
                                         "/api/health/ping",
+                                        "/api/public-content/settings",
                                         "/api/reviews"
 
                                 ).permitAll()

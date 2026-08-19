@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -24,10 +25,19 @@ public class DatabaseConstraintRepair implements ApplicationRunner {
 
     private final DataSource dataSource;
 
+    @Value("${app.database.repair-on-startup:false}")
+    private boolean repairOnStartup;
+
     @Override
     public void run(
             ApplicationArguments args
     ) throws Exception {
+        if (!repairOnStartup) {
+            LOGGER.info(
+                    "Database constraint repair skipped. Enable DB_REPAIR_ON_STARTUP=true to run it once."
+            );
+            return;
+        }
 
         try (Connection connection = dataSource.getConnection()) {
             String databaseProduct =
