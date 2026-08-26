@@ -23,6 +23,16 @@ Run separate API deployments and separate Postgres databases for development and
 
 Set mail and Google variables only when those features are enabled.
 
+## Bootstrap Admin Password Policy
+
+Use separate bootstrap passwords per environment. Local development can use
+`BOOTSTRAP_ADMIN_LOCAL_PASSWORD`; production must use `BOOTSTRAP_ADMIN_PASSWORD`.
+Do not reuse the local password in production.
+
+Keep `BOOTSTRAP_ADMIN_ENABLED=false` by default. Turn it on only when you
+intentionally want the app to upsert or reset the bootstrap admin, then turn it
+back off after one successful run.
+
 ## Local Development
 
 Copy `.env.dev.example` to an untracked `.env.dev` or set the variables in your shell.

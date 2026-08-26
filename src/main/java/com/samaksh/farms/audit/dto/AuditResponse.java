@@ -23,6 +23,8 @@ public class AuditResponse {
 
     private String referenceId;
 
+    private String referenceName;
+
     private String remarks;
 
     private LocalDateTime createdAt;

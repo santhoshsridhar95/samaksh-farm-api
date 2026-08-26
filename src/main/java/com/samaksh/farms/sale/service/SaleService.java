@@ -216,6 +216,9 @@ public class SaleService {
                         .amountCollected(
                                 amountAppliedToCurrentSale
                         )
+                        .amountReceivedToday(
+                                receivedToday
+                        )
                         .pendingAmount(
                                 pendingAmount
                         )
@@ -611,22 +614,24 @@ public class SaleService {
                         )
                 );
 
+        double amountReceivedToday =
+                request.getAmountReceivedToday() == null
+                        ? request.getAmountCollected() == null
+                                ? saleAmountReceivedToday(sale)
+                                : request.getAmountCollected()
+                        : request.getAmountReceivedToday();
+
+        if (amountReceivedToday < 0) {
+            throw new IllegalArgumentException(
+                    "Received amount cannot be negative"
+            );
+        }
+
         double amountCollected =
-                request.getAmountCollected() == null
-                        ? saleCollected(sale)
-                        : request.getAmountCollected();
-
-        if (amountCollected < 0) {
-            throw new IllegalArgumentException(
-                    "Collected amount cannot be negative"
-            );
-        }
-
-        if (amountCollected > billableAmount) {
-            throw new IllegalArgumentException(
-                    "Collected amount cannot be greater than billable amount"
-            );
-        }
+                Math.min(
+                        billableAmount,
+                        amountReceivedToday
+                );
 
         double pendingAmount =
                 Math.max(
@@ -640,6 +645,7 @@ public class SaleService {
         sale.setUnitPrice(unitPrice);
         sale.setTotalAmount(billableAmount);
         sale.setAmountCollected(amountCollected);
+        sale.setAmountReceivedToday(amountReceivedToday);
         sale.setPendingAmount(pendingAmount);
         sale.setShopkeeperSellingPrice(shopkeeperSellingPrice);
         sale.setExchangeType(exchangeType);
@@ -687,6 +693,8 @@ public class SaleService {
                         + ", bill Rs. "
                         + billableAmount
                         + ", collected Rs. "
+                        + amountReceivedToday
+                        + ", applied to this sale Rs. "
                         + amountCollected
         );
 
@@ -897,6 +905,15 @@ public class SaleService {
         return sale.getAmountCollected() == null
                 ? 0
                 : sale.getAmountCollected();
+    }
+
+    private double saleAmountReceivedToday(
+            Sale sale
+    ) {
+
+        return sale.getAmountReceivedToday() == null
+                ? saleCollected(sale)
+                : sale.getAmountReceivedToday();
     }
 
     private double saleQuantity(
@@ -1258,6 +1275,9 @@ public class SaleService {
                 )
                 .amountCollected(
                         sale.getAmountCollected()
+                )
+                .amountReceivedToday(
+                        saleAmountReceivedToday(sale)
                 )
                 .pendingAmount(
                         sale.getPendingAmount()

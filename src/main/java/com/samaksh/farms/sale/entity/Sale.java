@@ -40,6 +40,8 @@ public class Sale {
 
     private Double amountCollected;
 
+    private Double amountReceivedToday;
+
     private Double pendingAmount;
 
     private Double shopkeeperSellingPrice;

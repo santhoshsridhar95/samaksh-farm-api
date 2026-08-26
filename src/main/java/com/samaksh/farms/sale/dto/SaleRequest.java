@@ -21,6 +21,8 @@ public class SaleRequest {
 
     private Double amountCollected;
 
+    private Double amountReceivedToday;
+
     private Long collectorUserId;
 
     private String collectorName;
