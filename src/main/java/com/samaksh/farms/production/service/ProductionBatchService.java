@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@org.springframework.transaction.annotation.Transactional
 @Service
 @RequiredArgsConstructor
 public class ProductionBatchService {
@@ -34,12 +35,15 @@ public class ProductionBatchService {
     private final ProductionMovementRepository productionMovementRepository;
 
     private final AuditService auditService;
+    private final com.samaksh.farms.inventory.InventoryCatalogService catalog;
 
     public ProductionBatchResponse createBatch(
             ProductionBatchRequest request,
             Authentication authentication
     ) {
 
+        catalog.lock();
+        validateRequest(request);
         double calculatedSpawnKg =
                 request.getBagsPrepared() * 0.150;
 
@@ -49,11 +53,7 @@ public class ProductionBatchService {
         int calculatedCovers =
                 request.getBagsPrepared();
 
-        validateInventory(
-                calculatedSpawnKg,
-                calculatedPelletsKg,
-                calculatedCovers
-        );
+        validateInventory(calculatedSpawnKg + zero(request.getDamagedSpawnKg()), calculatedPelletsKg + zero(request.getDamagedPelletsKg()), calculatedCovers + zero(request.getDamagedCovers()));
 
         ProductionBatch batch =
                 ProductionBatch.builder()
@@ -101,9 +101,7 @@ public class ProductionBatchService {
                         .remarks(
                                 request.getRemarks()
                         )
-                        .startDate(
-                                LocalDate.now()
-                        )
+                        .startDate(request.getStartDate()==null?com.samaksh.farms.common.time.BusinessTime.today():request.getStartDate())
                         .status(
                                 BatchStatus.ACTIVE
                         )
@@ -117,31 +115,31 @@ public class ProductionBatchService {
         createConsumptionTransaction(
                 InventoryType.SPAWN,
                 calculatedSpawnKg,
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         createConsumptionTransaction(
                 InventoryType.PELLET,
                 calculatedPelletsKg,
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         createConsumptionTransaction(
                 InventoryType.BAG,
                 (double) calculatedCovers,
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         createDamageTransaction(
                 InventoryType.SPAWN,
                 request.getDamagedSpawnKg(),
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         createDamageTransaction(
                 InventoryType.PELLET,
                 request.getDamagedPelletsKg(),
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         createDamageTransaction(
@@ -149,7 +147,7 @@ public class ProductionBatchService {
                 request.getDamagedCovers() == null
                         ? 0.0
                         : request.getDamagedCovers().doubleValue(),
-                savedBatch.getBatchCode()
+                savedBatch.getBatchCode(), savedBatch.getStartDate()
         );
 
         auditService.createAudit(
@@ -157,7 +155,7 @@ public class ProductionBatchService {
                 "PRODUCTION",
                 "CREATE_BATCH",
                 savedBatch.getBatchCode(),
-                "Production batch created"
+                "Production batch created: " + request
         );
 
         return mapToResponse(
@@ -171,6 +169,9 @@ public class ProductionBatchService {
             Authentication authentication
     ) {
 
+        catalog.lock();
+        var movementDate=request.getMovementDate()==null?com.samaksh.farms.common.time.BusinessTime.today():request.getMovementDate();
+        if(movementDate.isAfter(com.samaksh.farms.common.time.BusinessTime.today()))throw new IllegalArgumentException("Movement date cannot be in the future");
         ProductionBatch batch =
                 productionBatchRepository.findById(
                         batchId
@@ -181,6 +182,7 @@ public class ProductionBatchService {
                         )
                 );
 
+        if(batch.getStartDate()!=null&&movementDate.isBefore(batch.getStartDate()))throw new IllegalArgumentException("Movement cannot precede batch start");
         int moved =
                 request.getMovedToLightRoom() == null
                         ? 0
@@ -201,6 +203,7 @@ public class ProductionBatchService {
                         + contaminated
                         + discarded;
 
+        if (moved < 0 || contaminated < 0 || discarded < 0 || totalProcessed <= 0) throw new IllegalArgumentException("Enter a positive bag movement");
         if (totalProcessed > batch.getDarkRoomBags()) {
 
             throw new RuntimeException(
@@ -251,7 +254,7 @@ public class ProductionBatchService {
                                 request.getRemarks()
                         )
                         .movementDate(
-                                LocalDateTime.now()
+                                movementDate.atStartOfDay()
                         )
                         .build();
 
@@ -264,7 +267,7 @@ public class ProductionBatchService {
                 "PRODUCTION",
                 "TRANSFER_TO_LIGHT_ROOM",
                 savedBatch.getBatchCode(),
-                request.getRemarks()
+                "Movement date " + movementDate + ", " + request.getRemarks()
         );
 
         return mapToResponse(
@@ -272,6 +275,32 @@ public class ProductionBatchService {
         );
     }
 
+    private double zero(Number n) { return n == null ? 0 : n.doubleValue(); }
+    private void validateRequest(ProductionBatchRequest r) {
+        if(r.getStartDate()!=null&&r.getStartDate().isAfter(com.samaksh.farms.common.time.BusinessTime.today()))throw new IllegalArgumentException("Batch start cannot be in the future");
+        if(r.getMushroomType()==null || r.getBagsPrepared()==null || r.getBagsPrepared()<=0) throw new IllegalArgumentException("Choose mushroom type and positive bag count");
+        for(double n:new double[]{zero(r.getDamagedCovers()),zero(r.getDamagedSpawnKg()),zero(r.getDamagedPelletsKg())}) if(!Double.isFinite(n)||n<0)throw new IllegalArgumentException("Damage cannot be negative");
+    }
+    public ProductionBatchResponse updateBatch(Long id, ProductionBatchRequest r, Authentication auth) {
+        catalog.lock(); validateRequest(r);
+        var b=productionBatchRepository.findById(id).orElseThrow(()->new IllegalArgumentException("Batch not found"));
+        String before=mapToResponse(b).toString();
+        int change=r.getBagsPrepared()-b.getBagsPrepared();
+        if(b.getDarkRoomBags()+change<0)throw new IllegalArgumentException("Cannot remove bags already transferred or discarded");
+        double[] old={zero(b.getSpawnUsedKg())+zero(b.getDamagedSpawnKg()),zero(b.getPelletsUsedKg())+zero(b.getDamagedPelletsKg()),zero(b.getCoversUsed())+zero(b.getDamagedCovers())};
+        double[] next={r.getBagsPrepared()*.15+zero(r.getDamagedSpawnKg()),r.getBagsPrepared()+zero(r.getDamagedPelletsKg()),r.getBagsPrepared()+zero(r.getDamagedCovers())};
+        InventoryType[] types={InventoryType.SPAWN,InventoryType.PELLET,InventoryType.BAG};
+        for(int i=0;i<3;i++) {
+            double delta=old[i]-next[i];
+            if(getAvailableInventory(types[i])+delta < -0.000001)throw new IllegalArgumentException("Insufficient "+types[i]+" stock");
+            if(Math.abs(delta)>0.000001)inventoryTransactionRepository.save(InventoryTransaction.builder().inventoryType(types[i].name()).transactionType("ADJUSTMENT").stockEffect(delta>0?1:-1).quantity(Math.abs(delta)).productionBatchCode(b.getBatchCode()).transactionDate(b.getStartDate()).remarks("Batch edit: "+b.getBatchCode()).createdByEmail(auth.getName()).createdAt(LocalDateTime.now()).build());
+        }
+        b.setMushroomType(r.getMushroomType());b.setBagsPrepared(r.getBagsPrepared());b.setDarkRoomBags(b.getDarkRoomBags()+change);
+        b.setSpawnUsedKg(r.getBagsPrepared()*.15);b.setPelletsUsedKg(r.getBagsPrepared().doubleValue());b.setCoversUsed(r.getBagsPrepared());
+        b.setDamagedCovers(r.getDamagedCovers());b.setDamagedSpawnKg(r.getDamagedSpawnKg());b.setDamagedPelletsKg(r.getDamagedPelletsKg());b.setRemarks(r.getRemarks());
+        if(r.getStartDate()!=null){if(productionMovementRepository.findAll().stream().anyMatch(m->m.getBatch()!=null&&id.equals(m.getBatch().getId())&&m.getMovementDate()!=null&&m.getMovementDate().toLocalDate().isBefore(r.getStartDate())))throw new IllegalArgumentException("Batch start cannot follow recorded room transfers");b.setStartDate(r.getStartDate());}
+        productionBatchRepository.save(b);auditService.createAudit(auth,"PRODUCTION","EDIT_BATCH",b.getBatchCode(),before+" -> "+mapToResponse(b));return mapToResponse(b);
+    }
     public List<ProductionBatchResponse> getAllBatches() {
 
         return productionBatchRepository.findAll()
@@ -290,29 +319,7 @@ public class ProductionBatchService {
                                 inventoryType
                         );
 
-        double available = 0;
-
-        for (InventoryTransaction transaction
-                : transactions) {
-
-            switch (
-                    transaction.getTransactionType()
-            ) {
-
-                case PURCHASE ->
-
-                        available +=
-                                transaction.getQuantity();
-
-                case CONSUMPTION,
-                     DAMAGE ->
-
-                        available -=
-                                transaction.getQuantity();
-            }
-        }
-
-        return available;
+        return transactions.stream().mapToDouble(InventoryTransaction::stockDelta).sum();
     }
 
     private void validateInventory(
@@ -388,6 +395,7 @@ public class ProductionBatchService {
                 .lightRoomBags(batch.getLightRoomBags())
                 .contaminatedBags(batch.getContaminatedBags())
                 .discardedBags(batch.getDiscardedBags())
+                .damagedCovers(batch.getDamagedCovers()).damagedSpawnKg(batch.getDamagedSpawnKg()).damagedPelletsKg(batch.getDamagedPelletsKg()).remarks(batch.getRemarks()).startDate(batch.getStartDate())
                 .status(batch.getStatus())
                 .build();
     }
@@ -395,7 +403,7 @@ public class ProductionBatchService {
     private void createConsumptionTransaction(
             InventoryType inventoryType,
             Double quantity,
-            String batchCode
+            String batchCode, LocalDate date
     ) {
 
         if (quantity == null || quantity <= 0) {
@@ -404,8 +412,8 @@ public class ProductionBatchService {
 
         inventoryTransactionRepository.save(
                 InventoryTransaction.builder()
-                        .inventoryType(inventoryType)
-                        .transactionType(TransactionType.CONSUMPTION)
+                        .inventoryType(inventoryType.name())
+                        .transactionType(TransactionType.CONSUMPTION.name()).stockEffect(-1).productionBatchCode(batchCode).transactionDate(date)
                         .quantity(quantity)
                         .remarks("Consumed in batch " + batchCode)
                         .createdByUserId(0L)
@@ -418,7 +426,7 @@ public class ProductionBatchService {
     private void createDamageTransaction(
             InventoryType inventoryType,
             Double quantity,
-            String batchCode
+            String batchCode, LocalDate date
     ) {
 
         if (quantity == null || quantity <= 0) {
@@ -427,8 +435,8 @@ public class ProductionBatchService {
 
         inventoryTransactionRepository.save(
                 InventoryTransaction.builder()
-                        .inventoryType(inventoryType)
-                        .transactionType(TransactionType.DAMAGE)
+                        .inventoryType(inventoryType.name())
+                        .transactionType(TransactionType.DAMAGE.name()).stockEffect(-1).productionBatchCode(batchCode).transactionDate(date)
                         .quantity(quantity)
                         .remarks("Damaged during batch " + batchCode)
                         .createdByUserId(0L)

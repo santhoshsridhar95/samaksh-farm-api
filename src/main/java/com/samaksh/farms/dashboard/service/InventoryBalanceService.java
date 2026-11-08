@@ -54,29 +54,6 @@ public class InventoryBalanceService {
         List<InventoryTransaction> transactions =
                 repository.findByInventoryType(type);
 
-        double balance = 0;
-
-        for (InventoryTransaction tx : transactions) {
-
-            if (tx.getTransactionType() ==
-                    TransactionType.PURCHASE) {
-
-                balance += tx.getQuantity();
-            }
-
-            else if (tx.getTransactionType() ==
-                    TransactionType.CONSUMPTION) {
-
-                balance -= tx.getQuantity();
-            }
-
-            else if (tx.getTransactionType() ==
-                    TransactionType.ADJUSTMENT) {
-
-                balance += tx.getQuantity();
-            }
-        }
-
-        return balance;
+        return transactions.stream().mapToDouble(InventoryTransaction::stockDelta).sum();
     }
 }

@@ -89,7 +89,6 @@ public class EntitlementService {
         if (role == Role.SALES_EMPLOYEE || role == Role.SALES_USER) {
 
             return List.of(
-                    MANAGE_SHOPS,
                     CREATE_DELIVERY
             );
         }

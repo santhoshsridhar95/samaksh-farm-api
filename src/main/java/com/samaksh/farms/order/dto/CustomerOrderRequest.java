@@ -18,4 +18,6 @@ public class CustomerOrderRequest {
     private LocalDate expectedDeliveryDate;
 
     private String remarks;
+    private java.time.LocalDate orderDate;
+    private com.samaksh.farms.enums.OrderStatus status;
 }

@@ -25,6 +25,7 @@ import org.springframework.data.domain.Pageable;
 import java.time.LocalDateTime;
 import java.util.List;
 
+@org.springframework.transaction.annotation.Transactional
 @Service
 @RequiredArgsConstructor
 public class CustomerOrderService {
@@ -44,6 +45,11 @@ public class CustomerOrderService {
             Authentication authentication
     ) {
 
+        if(request.getStatus()!=null&&request.getStatus()!=OrderStatus.PENDING&&(authentication==null||authentication.getAuthorities().stream().noneMatch(a->a.getAuthority().equals("ROLE_SUPER_ADMIN"))))throw new IllegalArgumentException("Only admin can import historical order status");
+        var date=request.getOrderDate()==null?BusinessTime.today():request.getOrderDate();
+        if(date.isAfter(BusinessTime.today()))throw new IllegalArgumentException("Order date cannot be in the future");
+        if(request.getQuantity()==null||!Double.isFinite(request.getQuantity())||request.getQuantity()<=0||request.getExpectedUnitPrice()==null||!Double.isFinite(request.getExpectedUnitPrice())||request.getExpectedUnitPrice()<0)throw new IllegalArgumentException("Enter positive quantity and non-negative price");
+        if(request.getExpectedDeliveryDate()!=null&&request.getExpectedDeliveryDate().isBefore(date))throw new IllegalArgumentException("Delivery cannot precede order date");
         Customer customer =
                 customerRepository.findById(
                         request.getCustomerId()
@@ -87,9 +93,7 @@ public class CustomerOrderService {
                         .expectedDeliveryDate(
                                 request.getExpectedDeliveryDate()
                         )
-                        .status(
-                                OrderStatus.PENDING
-                        )
+                        .orderDate(date).status(request.getStatus()==null?OrderStatus.PENDING:request.getStatus())
                         .remarks(
                                 request.getRemarks()
                         )
@@ -106,7 +110,7 @@ public class CustomerOrderService {
                 "ORDER",
                 "CREATE_ORDER",
                 savedOrder.getOrderCode(),
-                "Order Created"
+                "Order created: date="+date+", quantity="+request.getQuantity()+", price="+request.getExpectedUnitPrice()+", status="+savedOrder.getStatus()
         );
 
         return mapToResponse(savedOrder);
@@ -194,7 +198,7 @@ public class CustomerOrderService {
             CustomerOrder order
     ) {
 
-        return CustomerOrderResponse.builder()
+        return CustomerOrderResponse.builder().orderDate(order.getOrderDate()==null?(order.getCreatedAt()==null?null:order.getCreatedAt().toLocalDate()):order.getOrderDate())
                 .id(
                         order.getId()
                 )

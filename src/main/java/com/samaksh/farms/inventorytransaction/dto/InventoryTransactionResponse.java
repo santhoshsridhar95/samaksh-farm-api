@@ -10,10 +10,14 @@ import lombok.Data;
 public class InventoryTransactionResponse {
 
     private Long id;
+    private java.time.LocalDate transactionDate;
+    private Integer stockEffect;
+    private String productionBatchCode;
+    private java.time.LocalDateTime createdAt;
 
-    private InventoryType inventoryType;
+    private String inventoryType;
 
-    private TransactionType transactionType;
+    private String transactionType;
 
     private Double quantity;
 

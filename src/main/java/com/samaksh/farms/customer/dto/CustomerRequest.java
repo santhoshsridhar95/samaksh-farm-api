@@ -25,6 +25,11 @@ public class CustomerRequest {
 
     private String location;
 
+    @jakarta.validation.constraints.Size(max = 2048)
+    private String mapLocation;
+
+    private String shopStage;
+
     private String shopCategory;
 
     private List<String> products;

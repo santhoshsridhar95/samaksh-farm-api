@@ -30,6 +30,7 @@ public class AuditLog {
 
     private String referenceId;
 
+    @Column(columnDefinition = "text")
     private String remarks;
 
     private LocalDateTime createdAt;

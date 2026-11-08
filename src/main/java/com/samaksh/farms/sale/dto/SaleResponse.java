@@ -13,6 +13,8 @@ public class SaleResponse {
 
     private Long id;
 
+    private String salesChannel;
+
     private Long customerId;
 
     private String customerName;

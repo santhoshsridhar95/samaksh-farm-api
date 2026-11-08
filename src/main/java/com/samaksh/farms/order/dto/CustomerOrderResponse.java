@@ -11,6 +11,7 @@ import java.time.LocalDate;
 public class CustomerOrderResponse {
 
     private Long id;
+    private java.time.LocalDate orderDate;
 
     private String orderCode;
 

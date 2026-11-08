@@ -12,6 +12,8 @@ public class CustomerResponse {
 
     private Long id;
 
+    private String customerType;
+
     private String customerName;
 
     private String contactPerson;
@@ -23,6 +25,10 @@ public class CustomerResponse {
     private String address;
 
     private String location;
+
+    private String mapLocation;
+
+    private String shopStage;
 
     private String shopCategory;
 

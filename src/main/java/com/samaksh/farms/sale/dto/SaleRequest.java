@@ -9,6 +9,8 @@ import java.time.LocalDate;
 @Data
 public class SaleRequest {
 
+    private boolean directSale;
+
     private Long customerId;
 
     private Long productId;

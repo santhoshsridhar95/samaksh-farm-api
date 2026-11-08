@@ -36,6 +36,11 @@ public class HarvestController {
                 .build();
     }
 
+    @PutMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<HarvestResponse> edit(@PathVariable Long id, @RequestBody HarvestRequest r, Authentication auth) {
+        return ApiResponse.<HarvestResponse>builder().success(true).message("Harvest updated successfully").data(harvestService.updateHarvest(id,r,auth)).build();
+    }
     @GetMapping
     public ApiResponse<List<HarvestResponse>> getHarvests() {
 

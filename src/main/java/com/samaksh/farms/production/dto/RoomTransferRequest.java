@@ -16,4 +16,5 @@ public class RoomTransferRequest {
     private Integer discardedBags;
 
     private String remarks;
+    private java.time.LocalDate movementDate;
 }

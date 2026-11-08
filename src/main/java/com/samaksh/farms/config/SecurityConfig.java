@@ -45,7 +45,6 @@ public class SecurityConfig {
 
     private static final String[] SALES_OPERATIONS = {
             SUPER_ADMIN,
-            FARM_MANAGER,
             SALES_ADMIN,
             SALES_EMPLOYEE,
             SALES_USER
@@ -53,17 +52,10 @@ public class SecurityConfig {
 
     private static final String[] PRODUCT_MANAGEMENT = {
             SUPER_ADMIN,
-            FARM_MANAGER,
             SALES_ADMIN
     };
 
-    private static final String[] DASHBOARD_ROLES = {
-            SUPER_ADMIN,
-            FARM_MANAGER,
-            SALES_ADMIN,
-            SALES_EMPLOYEE,
-            SALES_USER
-    };
+    private static final String[] DASHBOARD_ROLES = { SUPER_ADMIN };
 
     private final JwtAuthenticationFilter jwtFilter;
 
@@ -138,10 +130,10 @@ public class SecurityConfig {
                                 ).hasRole(SUPER_ADMIN)
 
                                 .requestMatchers("/api/audit/**")
-                                .hasAnyRole(FARM_MANAGEMENT)
+                                .hasRole(SUPER_ADMIN)
 
                                 .requestMatchers("/api/server/**")
-                                .hasAnyRole(FARM_MANAGEMENT)
+                                .hasRole(SUPER_ADMIN)
 
                                 // Dashboards and analytics
                                 .requestMatchers(
@@ -157,6 +149,13 @@ public class SecurityConfig {
                                         "/api/batch-analytics/**",
                                         "/api/inventory-alerts/**"
                                 ).hasAnyRole(FARM_MANAGEMENT)
+
+                                .requestMatchers("/api/money/**", "/api/sourcing/**", "/api/retro-import/**", "/api/orders/**", "/api/cash-handovers/**").hasRole(SUPER_ADMIN)
+                                .requestMatchers(HttpMethod.POST, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)
+                                .requestMatchers(HttpMethod.PUT, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)
+                                .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)
+
+                                .requestMatchers("/api/direct-sales/**").hasAnyRole(SALES_OPERATIONS)
 
                                 // Farm inventory and production workflows
                                 .requestMatchers(
@@ -186,7 +185,7 @@ public class SecurityConfig {
                                 .requestMatchers(
                                         HttpMethod.GET,
                                         "/api/inventory-transactions/**"
-                                ).hasAnyRole(FARM_MANAGEMENT)
+                                ).hasAnyRole(FARM_OPERATIONS)
 
                                 .requestMatchers(
                                         HttpMethod.POST,

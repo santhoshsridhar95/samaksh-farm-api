@@ -29,7 +29,10 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@org.springframework.transaction.annotation.Transactional
 public class SaleService {
+
+    private final com.samaksh.farms.finance.MoneyService moneyService;
 
     private final SaleRepository saleRepository;
 
@@ -45,6 +48,8 @@ public class SaleService {
             SaleRequest request,
             Authentication authentication
     ) {
+        moneyService.prepare();
+
 
         if (request.getCustomerId() == null) {
             throw new IllegalArgumentException(
@@ -72,11 +77,10 @@ public class SaleService {
                         ? 0
                         : request.getUnitPrice();
 
-        if (quantity <= 0) {
-            throw new IllegalArgumentException(
-                    "Boxes must be greater than 0"
-            );
+        if (!Double.isFinite(quantity) || quantity < 0 || (request.isDirectSale() && quantity == 0)) {
+            throw new IllegalArgumentException("Boxes cannot be negative; direct sales require a positive quantity");
         }
+        boolean collectionOnly = quantity == 0;
 
         if (unitPrice < 0) {
             throw new IllegalArgumentException(
@@ -84,7 +88,7 @@ public class SaleService {
             );
         }
 
-        Product product =
+        Product product = collectionOnly ? saleRepository.findByCustomerIdAndPaymentStatusInOrderBySaleDateAsc(customer.getId(), List.of(PaymentStatus.PENDING, PaymentStatus.PARTIAL)).stream().map(Sale::getProduct).filter(java.util.Objects::nonNull).findFirst().orElse(null) :
                 resolveProduct(
                         request,
                         unitPrice
@@ -148,11 +152,14 @@ public class SaleService {
                         ? 0
                         : request.getAmountCollected();
 
-        if (receivedToday < 0) {
+        if (!Double.isFinite(receivedToday) || receivedToday < 0) {
             throw new IllegalArgumentException(
                     "Collected amount cannot be negative"
             );
         }
+
+        if (collectionOnly && receivedToday <= 0) throw new IllegalArgumentException("Enter an amount received to record a zero-box collection");
+        if (collectionOnly && (exchangeBoxes > 0 || returnedBoxes > 0)) throw new IllegalArgumentException("Record box returns separately from an amount-only collection");
 
         double outstandingBeforeSale =
                 customerPendingBalance(
@@ -171,7 +178,7 @@ public class SaleService {
                         authentication
                 );
 
-        double remainingCollection =
+        double remainingCollection = request.isDirectSale() ? receivedToday :
                 applyCollectionToPreviousSales(
                         customer.getId(),
                         receivedToday,
@@ -188,7 +195,7 @@ public class SaleService {
         double pendingAmount =
                 billableAmount - amountAppliedToCurrentSale;
 
-        PaymentStatus paymentStatus =
+        PaymentStatus paymentStatus = collectionOnly ? PaymentStatus.PAID :
                 resolvePaymentStatus(
                         billableAmount,
                         amountAppliedToCurrentSale
@@ -202,6 +209,7 @@ public class SaleService {
 
         Sale sale =
                 Sale.builder()
+                        .salesChannel(collectionOnly ? "COLLECTION" : request.isDirectSale() ? "DIRECT" : "SHOP")
                         .customer(customer)
                         .product(product)
                         .quantity(
@@ -274,10 +282,12 @@ public class SaleService {
                         sale
                 );
 
+        moneyService.collection(cashCollector.userId(), cashCollector.name(), cashCollector.email(), receivedToday, savedSale.getId(), authentication);
+
         auditService.createAudit(
                 authentication,
                 "SALE",
-                "CREATE_SALE",
+                collectionOnly ? "RECORD_SHOP_COLLECTION" : "CREATE_SALE",
                 savedSale.getId().toString(),
                 "Sale Amount : "
                         + billableAmount
@@ -375,6 +385,8 @@ public class SaleService {
             SalePaymentUpdateRequest request,
             Authentication authentication
     ) {
+        moneyService.prepare();
+
 
         Sale sale =
                 saleRepository.findById(
@@ -434,6 +446,8 @@ public class SaleService {
                         totalAmount,
                         newAmountCollected
                 );
+
+        moneyService.collection(currentUserId(authentication), currentUserName(authentication), currentUserEmail(authentication), newAmountCollected - oldAmountCollected, sale.getId(), authentication);
 
         sale.setAmountCollected(
                 newAmountCollected
@@ -501,6 +515,8 @@ public class SaleService {
             SaleRequest request,
             Authentication authentication
     ) {
+        moneyService.prepare();
+
 
         User currentUser =
                 currentUser(authentication);
@@ -627,11 +643,13 @@ public class SaleService {
             );
         }
 
-        double amountCollected =
-                Math.min(
-                        billableAmount,
-                        amountReceivedToday
-                );
+        if (Math.abs(amountReceivedToday - saleAmountReceivedToday(sale)) > 0.001) {
+            throw new IllegalArgumentException("Recorded receipts cannot be changed in delivery editing. Record additional collections using Collect payment.");
+        }
+        double amountCollected = saleCollected(sale);
+        if (billableAmount < amountCollected) {
+            throw new IllegalArgumentException("Bill cannot be reduced below the amount already collected");
+        }
 
         double pendingAmount =
                 Math.max(
@@ -1064,9 +1082,8 @@ public class SaleService {
             User user
     ) {
 
-        return user != null &&
-                user.getRole() != null &&
-                "SUPER_ADMIN".equals(user.getRole().name());
+        return user != null && (user.getRole() == com.samaksh.farms.enums.Role.SUPER_ADMIN ||
+                (user.getExtraRoles() != null && user.getExtraRoles().contains(com.samaksh.farms.enums.Role.SUPER_ADMIN)));
     }
 
     private String optionalText(
@@ -1256,14 +1273,9 @@ public class SaleService {
                         sale.getCustomer()
                                 .getMinimumBoxesPerDay()
                 )
-                .productId(
-                        sale.getProduct()
-                                .getId()
-                )
-                .productName(
-                        sale.getProduct()
-                                .getProductName()
-                )
+                .salesChannel(sale.getSalesChannel())
+                .productId(sale.getProduct() == null ? null : sale.getProduct().getId())
+                .productName("COLLECTION".equals(sale.getSalesChannel()) ? "Balance collection" : sale.getProduct() == null ? "Sale" : sale.getProduct().getProductName())
                 .quantity(
                         sale.getQuantity()
                 )

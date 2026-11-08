@@ -22,4 +22,5 @@ public class ProductionBatchRequest {
     private Double damagedPelletsKg;
 
     private String remarks;
+    private java.time.LocalDate startDate;
 }

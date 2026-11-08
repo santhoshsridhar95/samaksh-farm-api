@@ -14,6 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 public class FarmDashboardController {
 
     private final FarmDashboardService dashboardService;
+    private final com.samaksh.farms.analytics.service.ShopPriceService prices;
+    @GetMapping("/shop-prices")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('SUPER_ADMIN','FARM_MANAGER')")
+    public ApiResponse<?> shopPrices(@org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate from,@org.springframework.web.bind.annotation.RequestParam(required=false) java.time.LocalDate to){return ApiResponse.builder().success(true).data(prices.report(from,to)).build();}
 
     @GetMapping
     public ApiResponse<FarmDashboardResponse>
