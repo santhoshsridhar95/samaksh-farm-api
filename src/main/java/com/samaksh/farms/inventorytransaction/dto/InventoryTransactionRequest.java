@@ -7,11 +7,12 @@ import lombok.Data;
 @Data
 public class InventoryTransactionRequest {
 
-    private InventoryType inventoryType;
+    private String inventoryType;
 
-    private TransactionType transactionType;
+    private String transactionType;
 
     private Double quantity;
 
     private String remarks;
+    private java.time.LocalDate transactionDate;
 }

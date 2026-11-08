@@ -27,6 +27,8 @@ public class FarmDashboardResponse {
 
     private Double totalRevenue;
 
+    private Double currentMonthRevenue;
+
     private Double totalPendingAmount;
 
     private String dailyTopShop;

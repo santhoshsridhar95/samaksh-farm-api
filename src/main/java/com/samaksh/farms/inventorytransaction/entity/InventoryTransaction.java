@@ -20,18 +20,25 @@ public class InventoryTransaction {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private InventoryType inventoryType;
+    private String inventoryType;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private TransactionType transactionType;
+    private String transactionType;
 
     @Column(nullable = false)
     private Double quantity;
 
-    private String remarks;
+    @Column(columnDefinition="text") private String remarks;
+    private Integer stockEffect;
+    private String productionBatchCode;
+    private java.time.LocalDate transactionDate;
+    private LocalDateTime updatedAt;
+    private String updatedBy;
+    public double stockDelta() {
+        int direction = stockEffect != null ? stockEffect : ("PURCHASE".equals(transactionType) || "ADJUSTMENT".equals(transactionType) ? 1 : -1);
+        return (quantity == null ? 0 : quantity) * direction;
+    }
 
     /**
      * Audit Information

@@ -10,6 +10,11 @@ import lombok.Data;
 public class ProductionBatchResponse {
 
     private Long id;
+    private Integer damagedCovers;
+    private Double damagedSpawnKg;
+    private Double damagedPelletsKg;
+    private String remarks;
+    private java.time.LocalDate startDate;
 
     private String batchCode;
 

@@ -20,6 +20,8 @@ public class Customer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private String customerType;
+
     private String customerName;
 
     private String contactPerson;
@@ -31,6 +33,11 @@ public class Customer {
     private String address;
 
     private String location;
+
+    @Column(length = 2048)
+    private String mapLocation;
+
+    private String shopStage;
 
     private String shopCategory;
 

@@ -65,6 +65,11 @@ public class ProductionBatchController {
                 .build();
     }
 
+    @PutMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<ProductionBatchResponse> edit(@PathVariable Long id, @Valid @RequestBody ProductionBatchRequest r, Authentication a) {
+        return ApiResponse.<ProductionBatchResponse>builder().success(true).message("Batch updated").data(productionBatchService.updateBatch(id,r,a)).build();
+    }
     @GetMapping
     public ApiResponse<List<ProductionBatchResponse>>
     getBatches() {

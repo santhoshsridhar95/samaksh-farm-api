@@ -32,25 +32,20 @@ public class FarmDashboardService {
     private final CustomerRepository customerRepository;
 
     public FarmDashboardResponse getDashboard() {
+        var allInventory=inventoryRepository.findAll();
+        var allBatches=batchRepository.findAll();
 
         double spawnBalance =
-                calculateInventoryBalance(
-                        InventoryType.SPAWN
-                );
+                allInventory.stream().filter(tx->"SPAWN".equals(tx.getInventoryType())).mapToDouble(InventoryTransaction::stockDelta).sum();
 
         double pelletBalance =
-                calculateInventoryBalance(
-                        InventoryType.PELLET
-                );
+                allInventory.stream().filter(tx->"PELLET".equals(tx.getInventoryType())).mapToDouble(InventoryTransaction::stockDelta).sum();
 
         double bagBalance =
-                calculateInventoryBalance(
-                        InventoryType.BAG
-                );
+                allInventory.stream().filter(tx->"BAG".equals(tx.getInventoryType())).mapToDouble(InventoryTransaction::stockDelta).sum();
 
         int darkRoom =
-                batchRepository.findAll()
-                        .stream()
+                allBatches.stream()
                         .mapToInt(
                                 batch ->
                                         batch.getDarkRoomBags() == null
@@ -60,8 +55,7 @@ public class FarmDashboardService {
                         .sum();
 
         int lightRoom =
-                batchRepository.findAll()
-                        .stream()
+                allBatches.stream()
                         .mapToInt(
                                 batch ->
                                         batch.getLightRoomBags() == null
@@ -71,8 +65,7 @@ public class FarmDashboardService {
                         .sum();
 
         int contaminated =
-                batchRepository.findAll()
-                        .stream()
+                allBatches.stream()
                         .mapToInt(
                                 batch ->
                                         batch.getContaminatedBags() == null
@@ -82,8 +75,7 @@ public class FarmDashboardService {
                         .sum();
 
         int discarded =
-                batchRepository.findAll()
-                        .stream()
+                allBatches.stream()
                         .mapToInt(
                                 batch ->
                                         batch.getDiscardedBags() == null
@@ -120,6 +112,7 @@ public class FarmDashboardService {
                         customerRepository.count()
                 )
                 .totalRevenue(totalRevenue)
+                .currentMonthRevenue(currentMonthRevenue(sales,today))
                 .totalPendingAmount(totalPendingAmount)
                 .dailyTopShop(
                         topShopForPeriod(
@@ -148,6 +141,12 @@ public class FarmDashboardService {
                 .build();
     }
 
+    static double currentMonthRevenue(List<Sale> sales, LocalDate today) {
+        return sales.stream().filter(s->!"COLLECTION".equals(s.getSalesChannel())&&s.getSaleDate()!=null)
+            .filter(s->!s.getSaleDate().toLocalDate().isBefore(today.withDayOfMonth(1))&&!s.getSaleDate().toLocalDate().isAfter(today))
+            .map(s->s.getTotalAmount()==null?java.math.BigDecimal.ZERO:java.math.BigDecimal.valueOf(s.getTotalAmount()))
+            .reduce(java.math.BigDecimal.ZERO,java.math.BigDecimal::add).setScale(2,java.math.RoundingMode.HALF_UP).doubleValue();
+    }
     private List<FarmDashboardResponse.ShopBalanceResponse> shopBalances(
             List<Sale> sales
     ) {
@@ -309,16 +308,7 @@ public class FarmDashboardService {
                         inventoryType
                 )
                 .stream()
-                .mapToDouble(transaction -> {
-
-                    if (transaction.getTransactionType()
-                            == TransactionType.PURCHASE) {
-
-                        return transaction.getQuantity();
-                    }
-
-                    return -transaction.getQuantity();
-                })
+                .mapToDouble(transaction -> transaction.stockDelta())
                 .sum();
     }
 }

@@ -87,7 +87,9 @@ public class CustomerService {
                                         ? com.samaksh.farms.enums.ExchangeType.NONE
                                         : request.getExchangeType()
                         )
-                        .active(true)
+                        .mapLocation(optionalText(request.getMapLocation()))
+                        .shopStage(request.getShopStage() == null ? "EXISTING" : request.getShopStage())
+                        .active(request.getActive() == null || request.getActive())
                         .createdAt(
                                 BusinessTime.now()
                         )
@@ -141,6 +143,8 @@ public class CustomerService {
         customer.setAddress(
                 optionalText(request.getAddress())
         );
+        customer.setMapLocation(optionalText(request.getMapLocation()));
+        if (request.getShopStage() != null) customer.setShopStage(request.getShopStage());
         customer.setLocation(
                 defaultLocation(
                         request.getLocation()
@@ -243,7 +247,8 @@ public class CustomerService {
             Customer customer
     ) {
 
-        return CustomerResponse.builder()
+        return CustomerResponse.builder().customerType(customer.getCustomerType())
+                .mapLocation(customer.getMapLocation()).shopStage(customer.getShopStage())
                 .id(
                         customer.getId()
                 )
@@ -343,6 +348,12 @@ public class CustomerService {
             CustomerRequest request
     ) {
 
+        if (request.getShopStage() != null && !List.of("EXISTING", "PROSPECTIVE", "RETURN_PROSPECTIVE").contains(request.getShopStage())) {
+            throw new IllegalArgumentException("Invalid shop stage");
+        }
+        if (request.getMapLocation() != null && request.getMapLocation().length() > 2048) {
+            throw new IllegalArgumentException("Map location must be at most 2048 characters");
+        }
         if (request.getCustomerName() == null ||
                 request.getCustomerName().isBlank()) {
             throw new IllegalArgumentException("Shop name is required");

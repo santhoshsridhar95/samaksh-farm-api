@@ -28,38 +28,11 @@ public class CashHandoverController {
     }
 
     @PostMapping
-    public ApiResponse<CashHandoverResponse> createHandover(
-            @RequestBody CashHandoverRequest request,
-            Authentication authentication
-    ) {
-
-        return ApiResponse
-                .<CashHandoverResponse>builder()
-                .success(true)
-                .message("Cash handover recorded successfully")
-                .data(cashHandoverService.createHandover(
-                        request,
-                        authentication
-                ))
-                .build();
+    public ApiResponse<?> createHandover(@RequestBody CashHandoverRequest request) {
+        throw new IllegalArgumentException("Use Money & Expenses to transfer funds between named accounts.");
     }
-
     @PutMapping("/{id}")
-    public ApiResponse<CashHandoverResponse> updateHandover(
-            @PathVariable Long id,
-            @RequestBody CashHandoverRequest request,
-            Authentication authentication
-    ) {
-
-        return ApiResponse
-                .<CashHandoverResponse>builder()
-                .success(true)
-                .message("Cash handover updated successfully")
-                .data(cashHandoverService.updateHandover(
-                        id,
-                        request,
-                        authentication
-                ))
-                .build();
+    public ApiResponse<?> updateHandover(@PathVariable Long id, @RequestBody CashHandoverRequest request) {
+        throw new IllegalArgumentException("Historical handovers are retained for audit. Use Money & Expenses for corrections.");
     }
 }

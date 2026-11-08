@@ -44,4 +44,5 @@ public class CustomerOrder {
     private String remarks;
 
     private LocalDateTime createdAt;
+    private java.time.LocalDate orderDate;
 }

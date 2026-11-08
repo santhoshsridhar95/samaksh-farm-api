@@ -11,6 +11,7 @@ public interface InventoryTransactionRepository
 
     List<InventoryTransaction>
     findByInventoryType(
-            InventoryType inventoryType
+            String inventoryType
     );
+    default List<InventoryTransaction> findByInventoryType(InventoryType type) { return findByInventoryType(type.name()); }
 }

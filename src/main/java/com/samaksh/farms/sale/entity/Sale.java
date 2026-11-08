@@ -32,6 +32,9 @@ public class Sale {
     @ManyToOne
     private CustomerOrder order;
 
+    private String salesChannel;
+    private String purchaseLocation;
+
     private Double quantity;
 
     private Double unitPrice;
@@ -56,6 +59,7 @@ public class Sale {
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus;
 
+    @Column(columnDefinition = "text")
     private String remarks;
 
     private Long createdByUserId;

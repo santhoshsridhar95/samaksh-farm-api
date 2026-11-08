@@ -9,7 +9,10 @@ public class HarvestResponse {
 
     private Long id;
 
+    private Long batchId;
     private String batchCode;
+
+    private java.time.LocalDate harvestDate;
 
     private Double quantity;
 

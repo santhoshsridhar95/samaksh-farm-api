@@ -39,6 +39,11 @@ public class InventoryTransactionController {
                 .build();
     }
 
+    @PutMapping("/{id}")
+    @org.springframework.security.access.prepost.PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<InventoryTransactionResponse> edit(@PathVariable Long id, @RequestBody InventoryTransactionRequest r, Authentication a) {
+        return ApiResponse.<InventoryTransactionResponse>builder().success(true).message("Inventory updated").data(service.edit(id,r,a)).build();
+    }
     @GetMapping
     public ApiResponse<List<InventoryTransactionResponse>>
     getTransactions() {

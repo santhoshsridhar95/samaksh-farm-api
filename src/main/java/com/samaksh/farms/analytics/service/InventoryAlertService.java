@@ -81,12 +81,6 @@ public class InventoryAlertService {
             InventoryTransaction transaction
     ) {
 
-        if (transaction.getTransactionType()
-                == TransactionType.PURCHASE) {
-
-            return transaction.getQuantity();
-        }
-
-        return -transaction.getQuantity();
+        return transaction.stockDelta();
     }
 }
