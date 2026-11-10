@@ -11,6 +11,11 @@ import java.util.Map;
 @RequestMapping("/api/health")
 public class HealthController {
 
+    @GetMapping({"", "/"})
+    public Map<String, Object> rootPing() {
+        return ping();
+    }
+
     @GetMapping("/ping")
     public Map<String, Object> ping() {
         return Map.of(

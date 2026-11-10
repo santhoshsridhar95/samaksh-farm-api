@@ -12,12 +12,18 @@ import java.util.List;
 public interface SaleRepository
         extends JpaRepository<Sale, Long> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"customer","product"})
+    List<Sale> findByCreatedByUserIdAndSaleDateGreaterThanEqualAndSaleDateLessThan(Long userId,java.time.LocalDateTime from,java.time.LocalDateTime to);
+
     @Override
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"customer","product"})
     List<Sale> findAll();
 
     @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"customer","product"})
     List<Sale> findBySaleDateGreaterThanEqualAndSaleDateLessThan(java.time.LocalDateTime from,java.time.LocalDateTime to);
+
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths={"customer","product"})
+    List<Sale> findByCustomerIdOrderBySaleDateAscIdAsc(Long customerId);
 
     Page<Sale> findByPaymentStatus(
             PaymentStatus paymentStatus,

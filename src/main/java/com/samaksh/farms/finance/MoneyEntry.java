@@ -17,6 +17,7 @@ public class MoneyEntry {
     @Column(nullable = false, precision = 19, scale = 2) private BigDecimal amount;
     @Column(length = 1000) private String description;
     private String payee;
+    private Long employeeId;
     private String salaryMonth;
     private Long saleId;
     @Column(unique = true) private Long reversalOf;

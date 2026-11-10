@@ -80,6 +80,7 @@ public class SecurityConfig {
 
                                 // Public bootstrap APIs
                                 .requestMatchers(
+                                        "/",
                                         "/api/auth/config",
                                         "/api/auth/login",
                                         "/api/auth/signup",
@@ -150,7 +151,7 @@ public class SecurityConfig {
                                         "/api/inventory-alerts/**"
                                 ).hasAnyRole(FARM_MANAGEMENT)
 
-                                .requestMatchers("/api/money/**", "/api/sourcing/**", "/api/retro-import/**", "/api/orders/**", "/api/cash-handovers/**").hasRole(SUPER_ADMIN)
+                                .requestMatchers("/api/employees/**", "/api/money/**", "/api/sourcing/**", "/api/retro-import/**", "/api/orders/**", "/api/cash-handovers/**").hasRole(SUPER_ADMIN)
                                 .requestMatchers(HttpMethod.POST, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)
                                 .requestMatchers(HttpMethod.PUT, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)
                                 .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasAnyRole(SUPER_ADMIN, SALES_ADMIN)

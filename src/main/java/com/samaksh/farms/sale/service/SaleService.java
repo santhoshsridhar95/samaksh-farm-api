@@ -559,13 +559,10 @@ public class SaleService {
                         ? saleUnitPrice(sale)
                         : request.getUnitPrice();
 
-        if (quantity <= 0) {
-            throw new IllegalArgumentException(
-                    "Boxes must be greater than 0"
-            );
-        }
+        boolean collectionOnly = quantity == 0;
+        if (!Double.isFinite(quantity) || quantity < 0)throw new IllegalArgumentException("Boxes cannot be negative");
 
-        if (unitPrice < 0) {
+        if (!Double.isFinite(unitPrice) || unitPrice < 0) {
             throw new IllegalArgumentException(
                     "Unit price cannot be negative"
             );
@@ -614,7 +611,9 @@ public class SaleService {
             );
         }
 
-        Product product =
+
+        String beforeCorrection = "date="+sale.getSaleDate()+", quantity="+sale.getQuantity()+", price="+sale.getUnitPrice()+", received="+saleAmountReceivedToday(sale)+", shop="+sale.getCustomer().getId()+", remarks="+sale.getRemarks();
+        Product product = collectionOnly && "Balance collection".equals(request.getProductName()) ? sale.getProduct() :
                 resolveProduct(
                         request,
                         unitPrice
@@ -637,29 +636,28 @@ public class SaleService {
                                 : request.getAmountCollected()
                         : request.getAmountReceivedToday();
 
-        if (amountReceivedToday < 0) {
+        if (!Double.isFinite(amountReceivedToday) || amountReceivedToday < 0) {
             throw new IllegalArgumentException(
                     "Received amount cannot be negative"
             );
         }
 
-        if (Math.abs(amountReceivedToday - saleAmountReceivedToday(sale)) > 0.001) {
-            throw new IllegalArgumentException("Recorded receipts cannot be changed in delivery editing. Record additional collections using Collect payment.");
-        }
-        double amountCollected = saleCollected(sale);
-        if (billableAmount < amountCollected) {
-            throw new IllegalArgumentException("Bill cannot be reduced below the amount already collected");
-        }
-
-        double pendingAmount =
-                Math.max(
-                        0,
-                        billableAmount - amountCollected
-                );
+        double previousReceived=saleAmountReceivedToday(sale);
+        Long oldCustomerId=sale.getCustomer().getId();
+        boolean moved=!java.util.Objects.equals(oldCustomerId,customer.getId());
+        var oldSales=new java.util.ArrayList<>(saleRepository.findByCustomerIdOrderBySaleDateAscIdAsc(oldCustomerId));
+        if(oldSales.stream().noneMatch(v->v.getId().equals(saleId)))oldSales.add(sale);
+        var newSales=moved?new java.util.ArrayList<>(saleRepository.findByCustomerIdOrderBySaleDateAscIdAsc(customer.getId())):oldSales;
+        long oldCash=oldSales.stream().mapToLong(v->Math.round(saleCollected(v)*100)).sum();
+        long newCash=moved?newSales.stream().mapToLong(v->Math.round(saleCollected(v)*100)).sum():oldCash;
+        if(moved){oldSales.removeIf(v->v.getId().equals(saleId));newSales.add(sale);oldCash-=Math.round(previousReceived*100);newCash+=Math.round(amountReceivedToday*100);}
+        else newCash+=Math.round((amountReceivedToday-previousReceived)*100);
+        double amountCollected=0, pendingAmount=billableAmount;
 
         sale.setCustomer(customer);
         sale.setProduct(product);
         sale.setQuantity(quantity);
+        sale.setSalesChannel(collectionOnly ? "COLLECTION" : "DIRECT".equals(sale.getSalesChannel())?"DIRECT":"SHOP");
         sale.setUnitPrice(unitPrice);
         sale.setTotalAmount(billableAmount);
         sale.setAmountCollected(amountCollected);
@@ -670,7 +668,7 @@ public class SaleService {
         sale.setExchangeBoxes(exchangeBoxes);
         sale.setReturnedBoxes(returnedBoxes);
         sale.setPaymentStatus(
-                resolvePaymentStatus(
+                collectionOnly ? PaymentStatus.PAID : resolvePaymentStatus(
                         billableAmount,
                         amountCollected
                 )
@@ -694,6 +692,11 @@ public class SaleService {
                 authentication
         );
 
+        if(moved)reallocateCorrectedShop(oldSales,oldCash,authentication);
+        reallocateCorrectedShop(newSales,newCash,authentication);
+        moneyService.correctCollection(saleId,sale.getCreatedByUserId(),sale.getCreatedByName(),sale.getCreatedByEmail(),amountReceivedToday-previousReceived,sale.getSaleDate()==null?BusinessTime.today():sale.getSaleDate().toLocalDate(),authentication);
+        amountCollected=saleCollected(sale);
+
         Sale savedSale =
                 saleRepository.save(
                         sale
@@ -704,7 +707,7 @@ public class SaleService {
                 "SALE",
                 "UPDATE_SALE_ENTRY",
                 savedSale.getId().toString(),
-                "Delivery entry corrected for "
+                "Before: "+beforeCorrection+" | After: date="+savedSale.getSaleDate()+", remarks="+savedSale.getRemarks()+"; Delivery entry corrected for "
                         + savedSale.getCustomer().getCustomerName()
                         + ": boxes "
                         + quantity
@@ -719,6 +722,18 @@ public class SaleService {
         return mapToResponse(
                 savedSale
         );
+    }
+
+    private void reallocateCorrectedShop(List<Sale> rows,long receivedCents,Authentication auth) {
+        long billed=rows.stream().mapToLong(v->Math.round(saleTotal(v)*100)).sum();
+        if(receivedCents<0 || receivedCents>billed)throw new IllegalArgumentException("Corrected receipts must be between zero and the shop's total billed amount. Check the shop, boxes, price and amount received.");
+        rows.sort(java.util.Comparator.comparing(Sale::getSaleDate,java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())).thenComparing(Sale::getId));
+        long remaining=receivedCents;
+        for(var row:rows){double before=saleCollected(row);long total=Math.round(saleTotal(row)*100);long applied=Math.min(total,remaining);remaining-=applied;
+            row.setAmountCollected(applied/100d);row.setPendingAmount((total-applied)/100d);row.setPaymentStatus(total==0?PaymentStatus.PAID:resolvePaymentStatus(total/100d,applied/100d));
+            if(Math.abs(before-applied/100d)>.001){applyUpdatedBy(row,auth);auditService.createAudit(auth,"SALE","REALLOCATE_CORRECTION",row.getId().toString(),"After correction, oldest invoices first: collected "+before+" -> "+row.getAmountCollected()+"; pending "+row.getPendingAmount());}
+        }
+        saleRepository.saveAll(rows);
     }
 
     private PaymentStatus resolvePaymentStatus(
@@ -1275,7 +1290,7 @@ public class SaleService {
                 )
                 .salesChannel(sale.getSalesChannel())
                 .productId(sale.getProduct() == null ? null : sale.getProduct().getId())
-                .productName("COLLECTION".equals(sale.getSalesChannel()) ? "Balance collection" : sale.getProduct() == null ? "Sale" : sale.getProduct().getProductName())
+                .productName(sale.getProduct() == null ? ("COLLECTION".equals(sale.getSalesChannel()) ? "Balance collection" : "Sale") : sale.getProduct().getProductName())
                 .quantity(
                         sale.getQuantity()
                 )

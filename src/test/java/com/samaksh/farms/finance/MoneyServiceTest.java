@@ -19,13 +19,14 @@ class MoneyServiceTest {
     MoneyEntryRepository entries;
     MoneyService service;
     Authentication auth;
+    EntityManager em;
     List<MoneyEntry> journal;
     List<MoneyAccount> wallets;
     AuditService audit;
 
     @BeforeEach void setup() {
         accounts = mock(MoneyAccountRepository.class); entries = mock(MoneyEntryRepository.class);
-        var em = mock(EntityManager.class); var query = mock(Query.class);
+        em = mock(EntityManager.class); var query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         auth = mock(Authentication.class); when(auth.getName()).thenReturn("Santosh");
         audit = mock(AuditService.class);
@@ -40,6 +41,21 @@ class MoneyServiceTest {
         when(entries.findByRequestKey(anyString())).thenAnswer(i -> journal.stream().filter(e -> e.getRequestKey().equals(i.getArgument(0))).findFirst());
         when(entries.existsByReversalOf(anyLong())).thenAnswer(i -> journal.stream().anyMatch(e -> Objects.equals(e.getReversalOf(), i.getArgument(0))));
         when(entries.save(any())).thenAnswer(i -> { MoneyEntry e = i.getArgument(0); if (e.getId() == null) { e.setId((long) journal.size()+1); journal.add(e); } return e; });
+    }
+    @Test void employeeSalaryLinksSurviveReversalAndRetries() {
+        var employee=new com.samaksh.farms.employee.Employee();employee.setId(7L);employee.setName("Founder");employee.setJoinedOn(LocalDate.of(2026,1,1));
+        when(em.find(com.samaksh.farms.employee.Employee.class,7L)).thenReturn(employee);
+        var request=new MoneyRequest("employee-pay","SALARY",4L,null,new BigDecimal("500"),"Partial salary","Ignored name","2026-11",LocalDate.of(2026,11,8),7L);
+        var saved=service.record(request,auth);service.record(request,auth);
+        assertEquals(1,journal.size());assertEquals(7L,saved.getEmployeeId());assertEquals("Founder",saved.getPayee());
+        var reversal=service.reverse(saved.getId(),"Correction",auth);assertEquals(7L,reversal.getEmployeeId());assertEquals("2026-11",reversal.getSalaryMonth());assertEquals(0,balance(4L).signum());
+    }
+    @Test void unknownEmployeesAndSalaryOutsideEmploymentAreRejected() {
+        var request=new MoneyRequest("bad-employee","SALARY",4L,null,new BigDecimal("500"),"Salary","Name","2026-01",LocalDate.of(2026,11,8),7L);
+        assertThrows(IllegalArgumentException.class,()->service.record(request,auth));
+        var employee=new com.samaksh.farms.employee.Employee();employee.setJoinedOn(LocalDate.of(2026,2,1));
+        when(em.find(com.samaksh.farms.employee.Employee.class,7L)).thenReturn(employee);
+        assertThrows(IllegalArgumentException.class,()->service.record(request,auth));assertTrue(journal.isEmpty());
     }
     void wallet(Long id, String key, String name, String kind) {
         var a = new MoneyAccount(); a.setId(id); a.setAccountKey(key); a.setName(name); a.setKind(kind); wallets.add(a);
@@ -113,6 +129,43 @@ class MoneyServiceTest {
         service.settle(r, auth);
         assertEquals(0, balance(1L).compareTo(new BigDecimal("200")));
     }
+    @Test void actualBalanceCanClearHistoricalMoneyAndFutureReceiptsAccumulate() {
+        service.collection(1L,"Santosh",null,15000,10L,auth);
+        var request = new MoneyService.ReconciliationRequest("initial",1L,BigDecimal.ZERO,new BigDecimal("15000"),"Spent before app tracking");
+        var adjustment = service.reconcile(request,auth);
+        assertEquals("BALANCE_ADJUSTMENT",adjustment.getType());
+        assertEquals(0,balance(1L).signum());
+        assertEquals(2,journal.size());assertEquals(new BigDecimal("15000.00"),journal.getFirst().getAmount());
+        service.collection(1L,"Santosh",null,300,11L,auth);
+        service.reconcile(request,auth);
+        assertEquals(3,journal.size());assertEquals(0,balance(1L).compareTo(new BigDecimal("300")));
+        assertThrows(IllegalArgumentException.class,()->service.reconcile(new MoneyService.ReconciliationRequest("initial",1L,BigDecimal.ONE,new BigDecimal("15000"),"Changed"),auth));
+    }
+    @Test void reconciliationSetsExactAmountAndRejectsStaleOrPersonalBalances() {
+        service.reconcile(new MoneyService.ReconciliationRequest("start",2L,new BigDecimal("250"),BigDecimal.ZERO,"Cash counted"),auth);
+        assertEquals(0,balance(2L).compareTo(new BigDecimal("250")));
+        assertThrows(IllegalArgumentException.class,()->service.reconcile(new MoneyService.ReconciliationRequest("stale",2L,BigDecimal.ZERO,BigDecimal.ZERO,"Cash counted"),auth));
+        assertThrows(IllegalArgumentException.class,()->service.reconcile(new MoneyService.ReconciliationRequest("pocket",4L,BigDecimal.ZERO,BigDecimal.ZERO,"Cash counted"),auth));
+        assertThrows(IllegalArgumentException.class,()->service.reconcile(new MoneyService.ReconciliationRequest("negative",2L,BigDecimal.ONE.negate(),new BigDecimal("250"),"Cash counted"),auth));
+        service.reconcile(new MoneyService.ReconciliationRequest("same",2L,new BigDecimal("250"),new BigDecimal("250"),"Verified unchanged"),auth);
+        assertEquals(0,balance(2L).compareTo(new BigDecimal("250")));
+    }
+    @Test void fullBalanceTransfersToAnotherHolderWithoutBankAndRejectsSameAccount() {
+        service.collection(1L,"Santosh",null,500,10L,auth);
+        assertThrows(IllegalArgumentException.class,()->service.settle(new MoneyService.SettlementRequest("same",1L,1L),auth));
+        assertThrows(IllegalArgumentException.class,()->service.settle(new MoneyService.SettlementRequest("personal",1L,4L),auth));
+        service.settle(new MoneyService.SettlementRequest("sandeep",1L,2L),auth);
+        assertEquals(0,balance(1L).signum());assertEquals(0,balance(2L).compareTo(new BigDecimal("500")));
+    }
+    @Test void personalContributionFundsHolderAndCanBeRepaidWithoutExtraExpense() {
+        var contribution=request("CONTRIBUTION",4L,2L,"500");
+        service.record(contribution,auth);service.record(contribution,auth);
+        assertEquals(1,journal.size());assertEquals(0,balance(2L).compareTo(new BigDecimal("500")));assertEquals(0,balance(4L).compareTo(new BigDecimal("-500")));
+        service.record(request("REIMBURSEMENT",2L,4L,"200"),auth);
+        assertEquals(0,balance(2L).compareTo(new BigDecimal("300")));assertEquals(0,balance(4L).compareTo(new BigDecimal("-300")));
+        assertThrows(IllegalArgumentException.class,()->service.record(request("CONTRIBUTION",1L,2L,"100"),auth));
+        assertThrows(IllegalArgumentException.class,()->service.record(request("CONTRIBUTION",4L,4L,"100"),auth));
+    }
     @Test void editingExpenseUpdatesSameRowAndPreservesBeforeAfterAudit() {
         service.collection(1L, "Santosh", null, 500, 10L, auth);
         var original = service.record(request("EXPENSE", 1L, null, "100"), auth);
@@ -176,4 +229,14 @@ class MoneyServiceTest {
         assertThrows(IllegalArgumentException.class,()->service.edit(repayment.getId(),new MoneyService.EditRequest(request("REIMBURSEMENT",3L,4L,"501"),1L),auth));
         assertThrows(IllegalArgumentException.class,()->service.edit(expense.getId(),new MoneyService.EditRequest(request("EXPENSE",4L,null,"100"),0L),auth));
     }
+
+ @Test void cashCorrectionUsesOriginalCollectorAndProtectsSpentMoney(){
+  service.collection(1L,"Santosh",null,200,10L,auth);
+  service.correctCollection(10L,2L,"Sandeep",null,100,LocalDate.now(),auth);
+  assertEquals(0,balance(1L).compareTo(new BigDecimal("300")));assertEquals(0,balance(2L).signum());
+  service.correctCollection(10L,2L,"Sandeep",null,-200,LocalDate.now(),auth);
+  assertEquals(0,balance(1L).compareTo(new BigDecimal("100")));
+  service.record(request("TRANSFER",1L,3L,"100"),auth);
+  assertThrows(IllegalArgumentException.class,()->service.correctCollection(10L,1L,"Santosh",null,-1,LocalDate.now(),auth));
+ }
 }
