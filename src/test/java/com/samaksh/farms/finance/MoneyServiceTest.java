@@ -239,4 +239,60 @@ class MoneyServiceTest {
   service.record(request("TRANSFER",1L,3L,"100"),auth);
   assertThrows(IllegalArgumentException.class,()->service.correctCollection(10L,1L,"Santosh",null,-1,LocalDate.now(),auth));
  }
+
+    @Test void personalExpensesAndAdvancesCanStartAtZeroAndIncreaseDebt() {
+        var date = com.samaksh.farms.common.time.BusinessTime.today().minusMonths(2);
+        service.record(new MoneyRequest("personal-first", "EXPENSE", 4L, null, new BigDecimal("750"), "Past expense", null, null, date), auth);
+        service.record(new MoneyRequest("personal-next", "EXPENSE", 4L, null, new BigDecimal("1250"), "More personal spending", null, null, date), auth);
+        service.vendorFunds("advance", 4L, new BigDecimal("300"), date, false, "Vendor advance", auth);
+        assertEquals(0, balance(4L).compareTo(new BigDecimal("-2300")));
+        assertEquals(0, balance(1L).signum());
+        assertEquals(date, journal.getFirst().getDate());
+        assertEquals(com.samaksh.farms.common.time.BusinessTime.today(), journal.getFirst().getRecordedAt().toLocalDate());
+    }
+    MoneyService.SplitRequest split(String key, String total, FundingAllocation... sources) {
+        return new MoneyService.SplitRequest(new MoneyRequest(key,"EXPENSE",null,null,new BigDecimal(total),"Split expense",null,null,com.samaksh.farms.common.time.BusinessTime.today().minusDays(5)), List.of(sources));
+    }
+    FundingAllocation part(long id, String amount) { return new FundingAllocation(id, new BigDecimal(amount)); }
+    @Test void splitExpenseDebitsHeldFundsAndPersonalDebtExactlyOnce() {
+        service.collection(1L,"Santosh",null,200,10L,auth);
+        var r=split("split-expense","500",part(1,"200"),part(4,"300"));
+        var result=service.recordSplit(r,auth);
+        assertEquals(2,result.size());assertEquals(0,balance(1L).signum());
+        assertEquals(0,balance(4L).compareTo(new BigDecimal("-300")));
+        service.recordSplit(r,auth);assertEquals(3,journal.size());
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("split-expense","500",part(1,"100"),part(4,"400")),auth));
+        assertEquals(3,journal.size());
+    }
+    @Test void splitRejectsInsufficientHeldFundsBeforeAnyPersonalDebit() {
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("no-funds","500",part(4,"300"),part(1,"200")),auth));
+        assertTrue(journal.isEmpty());
+    }
+    @Test void splitRequiresExactTotalsUniqueSourcesAndPositiveCents() {
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("mismatch","500",part(4,"499")),auth));
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("duplicate","500",part(4,"200"),part(4,"300")),auth));
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("precision","1.001",part(4,"1.001")),auth));
+        assertThrows(IllegalArgumentException.class,()->service.recordSplit(split("zero","0",part(4,"0")),auth));
+        assertTrue(journal.isEmpty());
+    }
+    @Test void splitPersonalDebtCanBeReimbursedWithoutAnotherExpense() {
+        service.recordSplit(split("reimburse-split","500",part(4,"500")),auth);
+        service.collection(1L,"Santosh",null,500,10L,auth);
+        service.record(new MoneyRequest("repayment","REIMBURSEMENT",1L,4L,new BigDecimal("500"),"Repay personal spending",null,null,com.samaksh.farms.common.time.BusinessTime.today()),auth);
+        assertEquals(0,balance(4L).signum());assertEquals(0,balance(1L).signum());
+        assertEquals(1,journal.stream().filter(e->e.getType().equals("EXPENSE")).count());
+    }
+
+    @Test void failedSplitWriteRollsBackTheWholeServiceTransaction() {
+        wallet(5L,"POCKET:2","Second personal pocket","PERSONAL");
+        var manager=mock(org.springframework.transaction.PlatformTransactionManager.class);
+        var status=mock(org.springframework.transaction.TransactionStatus.class);
+        when(manager.getTransaction(any())).thenReturn(status);
+        var interceptor=new org.springframework.transaction.interceptor.TransactionInterceptor(manager,new org.springframework.transaction.annotation.AnnotationTransactionAttributeSource());
+        var proxyFactory=new org.springframework.aop.framework.ProxyFactory(service);proxyFactory.addAdvice(interceptor);
+        var proxy=(MoneyService)proxyFactory.getProxy();
+        doAnswer(i->{MoneyEntry entry=i.getArgument(0);if(entry.getSourceId().equals(5L))throw new IllegalStateException("Database write failed");entry.setId(1L);return entry;}).when(entries).save(any());
+        assertThrows(IllegalStateException.class,()->proxy.recordSplit(split("rollback","500",part(4,"200"),part(5,"300")),auth));
+        verify(manager).rollback(status);verify(manager,never()).commit(any());
+    }
 }

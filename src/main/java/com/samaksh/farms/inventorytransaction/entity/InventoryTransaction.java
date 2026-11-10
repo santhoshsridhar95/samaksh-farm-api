@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class InventoryTransaction {
+    private Long performedByEmployeeId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

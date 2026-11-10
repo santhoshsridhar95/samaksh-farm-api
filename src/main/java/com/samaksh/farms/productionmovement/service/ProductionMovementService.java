@@ -29,7 +29,7 @@ public class ProductionMovementService {
             ProductionMovement movement
     ) {
 
-        return ProductionMovementResponse.builder()
+        return ProductionMovementResponse.builder().performedByEmployeeId(movement.getPerformedByEmployeeId())
                 .id(
                         movement.getId()
                 )

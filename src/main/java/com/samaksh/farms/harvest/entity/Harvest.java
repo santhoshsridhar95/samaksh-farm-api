@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "harvest")
@@ -13,6 +14,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Harvest {
+    private Long performedByEmployeeId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -21,10 +23,15 @@ public class Harvest {
     private LocalDate harvestDate;
 
     private Double quantity;
+    private Integer numberOfBoxes;
 
     private String remarks;
 
     @ManyToOne
     @JoinColumn(name = "batch_id")
     private ProductionBatch batch;
+
+    private Long createdBy;
+
+    private LocalDateTime createdAt;
 }

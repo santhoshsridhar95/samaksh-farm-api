@@ -35,6 +35,7 @@ public class ProductionBatchService {
     private final ProductionMovementRepository productionMovementRepository;
 
     private final AuditService auditService;
+    private final com.samaksh.farms.employee.WorkAttributionService attribution;
     private final com.samaksh.farms.inventory.InventoryCatalogService catalog;
 
     public ProductionBatchResponse createBatch(
@@ -43,7 +44,9 @@ public class ProductionBatchService {
     ) {
 
         catalog.lock();
+        Long creatorId = currentUserId(authentication);
         validateRequest(request);
+        attribution.validate(request.getPerformedByEmployeeId(),null,request.getStartDate()==null?com.samaksh.farms.common.time.BusinessTime.today():request.getStartDate(),authentication);
         double calculatedSpawnKg =
                 request.getBagsPrepared() * 0.150;
 
@@ -56,7 +59,7 @@ public class ProductionBatchService {
         validateInventory(calculatedSpawnKg + zero(request.getDamagedSpawnKg()), calculatedPelletsKg + zero(request.getDamagedPelletsKg()), calculatedCovers + zero(request.getDamagedCovers()));
 
         ProductionBatch batch =
-                ProductionBatch.builder()
+                ProductionBatch.builder().performedByEmployeeId(request.getPerformedByEmployeeId())
                         .batchCode(
                                 generateBatchCode(
                                         request.getMushroomType()
@@ -105,6 +108,8 @@ public class ProductionBatchService {
                         .status(
                                 BatchStatus.ACTIVE
                         )
+                        .createdBy(creatorId)
+                        .createdAt(com.samaksh.farms.common.time.BusinessTime.now())
                         .build();
 
         ProductionBatch savedBatch =
@@ -211,6 +216,7 @@ public class ProductionBatchService {
             );
         }
 
+        attribution.validate(request.getPerformedByEmployeeId(),null,movementDate,authentication);
         batch.setDarkRoomBags(
                 batch.getDarkRoomBags()
                         - totalProcessed
@@ -237,7 +243,7 @@ public class ProductionBatchService {
                 );
 
         ProductionMovement movement =
-                ProductionMovement.builder()
+                ProductionMovement.builder().performedByEmployeeId(request.getPerformedByEmployeeId())
                         .batch(
                                 savedBatch
                         )
@@ -267,7 +273,7 @@ public class ProductionBatchService {
                 "PRODUCTION",
                 "TRANSFER_TO_LIGHT_ROOM",
                 savedBatch.getBatchCode(),
-                "Movement date " + movementDate + ", " + request.getRemarks()
+                "Movement date " + movementDate + ", " + request
         );
 
         return mapToResponse(
@@ -285,6 +291,8 @@ public class ProductionBatchService {
         catalog.lock(); validateRequest(r);
         var b=productionBatchRepository.findById(id).orElseThrow(()->new IllegalArgumentException("Batch not found"));
         String before=mapToResponse(b).toString();
+        attribution.validate(r.getPerformedByEmployeeId(),b.getPerformedByEmployeeId(),r.getStartDate()==null?b.getStartDate():r.getStartDate(),auth);
+        b.setPerformedByEmployeeId(r.getPerformedByEmployeeId());
         int change=r.getBagsPrepared()-b.getBagsPrepared();
         if(b.getDarkRoomBags()+change<0)throw new IllegalArgumentException("Cannot remove bags already transferred or discarded");
         double[] old={zero(b.getSpawnUsedKg())+zero(b.getDamagedSpawnKg()),zero(b.getPelletsUsedKg())+zero(b.getDamagedPelletsKg()),zero(b.getCoversUsed())+zero(b.getDamagedCovers())};
@@ -380,7 +388,7 @@ public class ProductionBatchService {
             ProductionBatch batch
     ) {
 
-        return ProductionBatchResponse.builder()
+        return ProductionBatchResponse.builder().performedByEmployeeId(batch.getPerformedByEmployeeId())
                 .id(batch.getId())
                 .batchCode(batch.getBatchCode())
                 .mushroomType(batch.getMushroomType())
@@ -473,5 +481,12 @@ public class ProductionBatchService {
                 + date
                 + "-"
                 + String.format("%03d", count);
+    }
+
+    private Long currentUserId(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof com.samaksh.farms.user.entity.User user) {
+            return user.getId();
+        }
+        return null;
     }
 }

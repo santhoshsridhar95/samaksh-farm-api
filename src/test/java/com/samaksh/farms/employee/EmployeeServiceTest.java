@@ -22,7 +22,7 @@ class EmployeeServiceTest {
  AuditService audit=mock(AuditService.class);
  EntityManager em=mock(EntityManager.class);
  Authentication auth=mock(Authentication.class);
- EmployeeService service=new EmployeeService(employees,salaries,work,money,sales,users,audit,em);
+ EmployeeService service=new EmployeeService(employees,salaries,work,money,sales,users,audit,em,mock(FarmWorkReportService.class));
  Employee employee;
  @BeforeEach void setup(){
   employee=new Employee();employee.setId(1L);employee.setJoinedOn(LocalDate.of(2026,1,1));employee.setVersion(0L);

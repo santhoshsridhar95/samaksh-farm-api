@@ -5,6 +5,7 @@ import lombok.Data;
 
 @Data
 public class RoomTransferRequest {
+    private Long performedByEmployeeId;
 
     @Min(0)
     private Integer movedToLightRoom;

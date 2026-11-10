@@ -17,6 +17,7 @@ public class SourcingController {
     @PostMapping("/receipts") public ApiResponse<?> receipt(@Valid @RequestBody SourcingRequests.Receipt r, Authentication a) { return ok(service.receipt(null,r,a)); }
     @PutMapping("/receipts/{id}") @PreAuthorize("hasRole('SUPER_ADMIN')") public ApiResponse<?> editReceipt(@PathVariable Long id, @Valid @RequestBody SourcingRequests.Receipt r, Authentication a) { return ok(service.receipt(id,r,a)); }
     @PostMapping("/payments") public ApiResponse<?> payment(@Valid @RequestBody SourcingRequests.Payment r, Authentication a) { return ok(service.payment(null,r,a)); }
+    @PostMapping("/payments/split") public ApiResponse<?> splitPayment(@Valid @RequestBody SourcingRequests.SplitPayment r, Authentication a) { return ok(service.splitPayment(r,a)); }
     @PutMapping("/payments/{id}") @PreAuthorize("hasRole('SUPER_ADMIN')") public ApiResponse<?> editPayment(@PathVariable Long id, @Valid @RequestBody SourcingRequests.Payment r, Authentication a) { return ok(service.payment(id,r,a)); }
     @PostMapping("/recoveries") public ApiResponse<?> recovery(@Valid @RequestBody SourcingRequests.Recovery r, Authentication a) { return ok(service.recovery(null,r,a)); }
     @PutMapping("/recoveries/{id}") @PreAuthorize("hasRole('SUPER_ADMIN')") public ApiResponse<?> editRecovery(@PathVariable Long id,@Valid @RequestBody SourcingRequests.Recovery r,Authentication a){return ok(service.recovery(id,r,a));}

@@ -15,6 +15,7 @@ import java.util.*;
 public class InventoryTransactionService {
  private final InventoryTransactionRepository repository;
  private final AuditService auditService;
+    private final com.samaksh.farms.employee.WorkAttributionService attribution;
  private final InventoryCatalogService catalog;
  public InventoryTransactionResponse createTransaction(InventoryTransactionRequest r, Authentication a) { return save(null,r,a); }
  public InventoryTransactionResponse edit(Long id, InventoryTransactionRequest r, Authentication a) { return save(id,r,a); }
@@ -35,12 +36,14 @@ public class InventoryTransactionService {
    double next=balance-(Objects.equals(type,oldType)?oldDelta:0)+(type.equals(r.getInventoryType())?r.getQuantity()*effect:0);
    if(next < Math.min(0,balance)-0.000001)throw new IllegalArgumentException("Insufficient stock for "+type);
   }
+  attribution.validate(r.getPerformedByEmployeeId(),t.getPerformedByEmployeeId(),date,a);
+  t.setPerformedByEmployeeId(r.getPerformedByEmployeeId());
   t.setInventoryType(r.getInventoryType());t.setTransactionType(r.getTransactionType());t.setQuantity(r.getQuantity());t.setStockEffect(effect);t.setRemarks(r.getRemarks());t.setTransactionDate(r.getTransactionDate()!=null||id==null?date:(t.getTransactionDate()!=null?t.getTransactionDate():t.getCreatedAt().toLocalDate()));
   if(id==null){t.setCreatedAt(LocalDateTime.now());t.setCreatedByEmail(a.getName());if(a.getPrincipal() instanceof User u)t.setCreatedByUserId(u.getId());}
   else {t.setUpdatedAt(LocalDateTime.now());t.setUpdatedBy(a.getName());}
   repository.save(t);auditService.createAudit(a,"INVENTORY",id==null?"CREATE":"EDIT",String.valueOf(t.getId()),before+" -> "+describe(t));return map(t);
  }
- private String describe(InventoryTransaction t){return t.getTransactionDate()+" / "+t.getInventoryType()+" / "+t.getTransactionType()+" / "+t.getQuantity()+" / "+t.getRemarks();}
+ private String describe(InventoryTransaction t){return "worker="+t.getPerformedByEmployeeId()+" / "+t.getTransactionDate()+" / "+t.getInventoryType()+" / "+t.getTransactionType()+" / "+t.getQuantity()+" / "+t.getRemarks();}
  public List<InventoryTransactionResponse> getAllTransactions(){return repository.findAll().stream().map(this::map).toList();}
- private InventoryTransactionResponse map(InventoryTransaction t){return InventoryTransactionResponse.builder().id(t.getId()).transactionDate(t.getTransactionDate()==null?(t.getCreatedAt()==null?null:t.getCreatedAt().toLocalDate()):t.getTransactionDate()).inventoryType(t.getInventoryType()).transactionType(t.getTransactionType()).quantity(t.getQuantity()).remarks(t.getRemarks()).stockEffect(t.getStockEffect()).productionBatchCode(t.getProductionBatchCode()).createdAt(t.getCreatedAt()).createdByUserId(t.getCreatedByUserId()).createdByEmail(t.getCreatedByEmail()).build();}
+ private InventoryTransactionResponse map(InventoryTransaction t){return InventoryTransactionResponse.builder().id(t.getId()).performedByEmployeeId(t.getPerformedByEmployeeId()).transactionDate(t.getTransactionDate()==null?(t.getCreatedAt()==null?null:t.getCreatedAt().toLocalDate()):t.getTransactionDate()).inventoryType(t.getInventoryType()).transactionType(t.getTransactionType()).quantity(t.getQuantity()).remarks(t.getRemarks()).stockEffect(t.getStockEffect()).productionBatchCode(t.getProductionBatchCode()).createdAt(t.getCreatedAt()).createdByUserId(t.getCreatedByUserId()).createdByEmail(t.getCreatedByEmail()).build();}
 }

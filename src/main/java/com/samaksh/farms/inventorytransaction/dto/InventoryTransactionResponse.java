@@ -8,6 +8,7 @@ import lombok.Data;
 @Data
 @Builder
 public class InventoryTransactionResponse {
+    private Long performedByEmployeeId;
 
     private Long id;
     private java.time.LocalDate transactionDate;

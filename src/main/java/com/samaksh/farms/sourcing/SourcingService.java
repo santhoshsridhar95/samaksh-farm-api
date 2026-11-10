@@ -68,12 +68,12 @@ public class SourcingService {
             return view(receipt, payments.findAll());
         }
         if (id != null && !receipt.getVendorId().equals(r.vendorId())) throw new IllegalArgumentException("A receipt's source cannot change; correct its quantities or prices instead");
+        var plannedSellingDate = r.plannedSellingDate() != null ? r.plannedSellingDate() : id == null ? com.samaksh.farms.common.time.BusinessTime.today() : receipt.getPlannedSellingDate();
+        if(plannedSellingDate != null && plannedSellingDate.isBefore(r.date()))throw new IllegalArgumentException("Planned selling date cannot be before received date");
         String before = id == null ? "" : receiptSummary(receipt);
         var ratio = id == null ? vendor.getBoxesPerKg() : receipt.getBoxesPerKg();
         var kg = r.unit().equals("KG") ? r.quantity() : r.quantity().divide(ratio, 6, RoundingMode.HALF_UP);
         if (kg.signum() <= 0) throw new IllegalArgumentException("Received weight is too small for this conversion");
-        if (id != null && payments.findByReceiptId(id).stream().anyMatch(p -> p.getDate().isBefore(r.date())))
-            throw new IllegalArgumentException("Receipt date cannot be later than a recorded payment");
         var damagedBoxes = r.damagedBoxes() == null ? BigDecimal.ZERO : r.damagedBoxes();
         var spoiledKg = damagedBoxes.divide(ratio, 6, RoundingMode.HALF_UP);
         if (spoiledKg.compareTo(kg) > 0) throw new IllegalArgumentException("Damaged boxes cannot exceed received stock");
@@ -94,7 +94,7 @@ public class SourcingService {
         if (expenseChanged && receipt.getExpenseEntryId() != null) money.reverseLinked(receipt.getExpenseEntryId(), "Sourcing receipt correction #" + id, auth);
         receipt.setRequestKey(id == null ? r.requestKey() : receipt.getRequestKey()); receipt.setRequestFingerprint(MoneyService.fingerprint(r));
         receipt.setLastMutationKey(r.requestKey());
-        receipt.setVendorId(vendor.getId()); receipt.setDate(r.date()); receipt.setProduct(r.product()); receipt.setQuantityKg(kg);
+        receipt.setVendorId(vendor.getId()); receipt.setDate(r.date()); receipt.setPlannedSellingDate(plannedSellingDate); receipt.setProduct(r.product()); receipt.setQuantityKg(kg);
         receipt.setBoxes(r.unit().equals("BOX") ? r.quantity() : kg.multiply(ratio)); receipt.setBoxesPerKg(ratio);
         receipt.setCostPerKg(r.costPerKg()); receipt.setSellingPricePerKg(price); receipt.setTransportCost(r.transportCost()); receipt.setOtherCost(r.otherCost());
         receipt.setExpensesBorneBy(r.expensesBorneBy()); receipt.setExpensesPaidBy(r.expensesPaidBy()); receipt.setExpenseAccountId(r.expenseAccountId());
@@ -112,6 +112,46 @@ public class SourcingService {
         audit.createAudit(auth, "SOURCING_RECEIPT", id == null ? "CREATE_RECEIPT" : "EDIT_RECEIPT", receipt.getId().toString(), before + " -> " + receiptSummary(receipt));
         return view(receipt, payments.findAll());
     }
+    public List<SourcingPayment> splitPayment(SourcingRequests.SplitPayment request, Authentication auth) {
+        money.prepare();
+        var r = request.payment();
+        var additional = r.additionalAmount() == null ? BigDecimal.ZERO : r.additionalAmount();
+        FundingAllocation.validate(request.sources(), r.amount().add(additional));
+        String fingerprint = MoneyService.fingerprint(request);
+        var prior = new ArrayList<SourcingPayment>();
+        for (int i = 0; i < request.sources().size(); i++) {
+            var existing = payments.findByRequestKey("split:" + r.requestKey() + ":" + i);
+            if (existing.isPresent()) {
+                if (!Objects.equals(existing.get().getRequestFingerprint(), fingerprint))
+                    throw new IllegalArgumentException("This split vendor payment was already saved with different details");
+                prior.add(existing.get());
+            }
+        }
+        if (!prior.isEmpty()) {
+            if (prior.size() != request.sources().size()) throw new IllegalArgumentException("Incomplete split payment; refresh before retrying");
+            return prior;
+        }
+        var receipt = getReceipt(r.receiptId());
+        if (getVendor(receipt.getVendorId()).getKind().equals("OWN_FARM"))
+            throw new IllegalArgumentException("Own-farm receipts do not create vendor payments");
+        if (r.amount().signum() < 0 || additional.signum() < 0 || r.amount().compareTo(view(receipt, payments.findAll()).balanceDue().max(BigDecimal.ZERO)) > 0)
+            throw new IllegalArgumentException("Payment exceeds the vendor balance after deductions");
+        money.validateFunding(request.sources());
+        var invoiceRemaining = r.amount();
+        var saved = new ArrayList<SourcingPayment>();
+        for (int i = 0; i < request.sources().size(); i++) {
+            var source = request.sources().get(i);
+            // Sources cover the invoice first, then the recoverable advance, in displayed order.
+            var invoice = source.amount().min(invoiceRemaining);
+            invoiceRemaining = invoiceRemaining.subtract(invoice);
+            var part = payment(null, new SourcingRequests.Payment("split:" + r.requestKey() + ":" + i,
+                    r.receiptId(), source.accountId(), invoice, r.date(), r.notes(), source.amount().subtract(invoice)), auth);
+            part.setRequestFingerprint(fingerprint);
+            saved.add(part);
+        }
+        return saved;
+    }
+
     public SourcingPayment payment(Long id, SourcingRequests.Payment r, Authentication auth) {
         money.prepare();
         if (id == null) {
@@ -123,7 +163,7 @@ public class SourcingService {
         }
         var receipt = getReceipt(r.receiptId()); var vendor = getVendor(receipt.getVendorId());
         if (vendor.getKind().equals("OWN_FARM")) throw new IllegalArgumentException("Own-farm receipts do not create vendor payments");
-        if (r.date().isBefore(receipt.getDate())) throw new IllegalArgumentException("Payment date cannot precede the receipt");
+        // A vendor may be paid before delivery; retain the actual business date.
         var payment = id == null ? new SourcingPayment() : payments.findById(id).orElseThrow(() -> new IllegalArgumentException("Payment not found"));
         if (id != null && r.requestKey().equals(payment.getLastMutationKey())) {
             if (!Objects.equals(payment.getRequestFingerprint(), MoneyService.fingerprint(r))) throw new IllegalArgumentException("This payment edit was already saved with different details");
@@ -205,7 +245,7 @@ public class SourcingService {
     private SourcingReceipt getReceipt(Long id) { return receipts.findById(id).orElseThrow(() -> new IllegalArgumentException("Receipt not found")); }
     private static BigDecimal cash(BigDecimal n) { return n.setScale(2, RoundingMode.HALF_UP); }
     private String vendorSummary(SourcingVendor v) { return v.getName() + ", " + v.getKind() + ", cost/kg " + v.getCostPerKg() + ", boxes/kg " + v.getBoxesPerKg() + ", costs borne by " + v.getExpensesBorneBy() + ", active " + v.isActive(); }
-    private String receiptSummary(SourcingReceipt r) { return "source " + r.getVendorId() + ", " + r.getDate() + ", " + r.getQuantityKg() + " kg, cost/kg " + r.getCostPerKg() + ", sell/kg " + r.getSellingPricePerKg() + ", transport " + r.getTransportCost() + ", other " + r.getOtherCost() + ", borne " + r.getExpensesBorneBy() + ", paid " + r.getExpensesPaidBy() + ", damaged boxes " + r.getDamagedBoxes() + ", notes " + r.getNotes() + ", sold " + r.getSoldKg() + " kg"; }
+    private String receiptSummary(SourcingReceipt r) { return "source " + r.getVendorId() + ", " + r.getDate() + ", planned selling date " + r.getPlannedSellingDate() + ", " + r.getQuantityKg() + " kg, cost/kg " + r.getCostPerKg() + ", sell/kg " + r.getSellingPricePerKg() + ", transport " + r.getTransportCost() + ", other " + r.getOtherCost() + ", borne " + r.getExpensesBorneBy() + ", paid " + r.getExpensesPaidBy() + ", damaged boxes " + r.getDamagedBoxes() + ", notes " + r.getNotes() + ", sold " + r.getSoldKg() + " kg"; }
     public record Costs(BigDecimal goodsCost, BigDecimal deduction, BigDecimal reimbursement, BigDecimal payable, BigDecimal landedCost, BigDecimal potentialRevenue, BigDecimal potentialMargin, BigDecimal reportedSales, BigDecimal soldMargin) {}
     public record ReceiptView(SourcingReceipt receipt, String vendorName, String kind, Costs costs, BigDecimal paid, BigDecimal balanceDue) {}
 }
