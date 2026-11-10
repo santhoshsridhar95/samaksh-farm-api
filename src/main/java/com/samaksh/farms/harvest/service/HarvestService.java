@@ -16,6 +16,7 @@ public class HarvestService {
     private final HarvestRepository harvestRepository;
     private final ProductionBatchRepository batchRepository;
     private final AuditService auditService;
+    private final com.samaksh.farms.employee.WorkAttributionService attribution;
     public HarvestResponse createHarvest(HarvestRequest r, Authentication auth) { return save(null,r,auth); }
     public HarvestResponse updateHarvest(Long id, HarvestRequest r, Authentication auth) { return save(id,r,auth); }
     private HarvestResponse save(Long id, HarvestRequest r, Authentication auth) {
@@ -25,11 +26,26 @@ public class HarvestService {
         var batch=r.getBatchId()==null?null:batchRepository.findById(r.getBatchId()).orElseThrow(()->new ResourceNotFoundException("Batch",r.getBatchId()));
         var h=id==null?new Harvest():harvestRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Harvest",id));
         String before=id==null?"":mapToResponse(h).toString();
+        attribution.validate(r.getPerformedByEmployeeId(), h.getPerformedByEmployeeId(), date, auth);
+        if(r.getNumberOfBoxes()!=null && r.getNumberOfBoxes()<0)throw new IllegalArgumentException("Number of boxes cannot be negative");
+        h.setPerformedByEmployeeId(r.getPerformedByEmployeeId());h.setNumberOfBoxes(r.getNumberOfBoxes());
         h.setBatch(batch);h.setHarvestDate(date);h.setQuantity(r.getQuantity());h.setRemarks(r.getRemarks());
+        // Set creator and timestamp for new entries
+        if (id == null) {
+            h.setCreatedBy(currentUserId(auth));
+            h.setCreatedAt(BusinessTime.now());
+        }
         var saved=harvestRepository.save(h);
         auditService.createAudit(auth,"HARVEST",id==null?"CREATE_HARVEST":"EDIT_HARVEST",String.valueOf(saved.getId()),before+" -> "+mapToResponse(saved));
         return mapToResponse(saved);
     }
+
+    private Long currentUserId(Authentication authentication) {
+        if (authentication != null && authentication.getPrincipal() instanceof com.samaksh.farms.user.entity.User user) {
+            return user.getId();
+        }
+        return null;
+    }
     public List<HarvestResponse> getAllHarvests(){return harvestRepository.findAll().stream().map(this::mapToResponse).toList();}
-    private HarvestResponse mapToResponse(Harvest h){return HarvestResponse.builder().id(h.getId()).batchId(h.getBatch()==null?null:h.getBatch().getId()).batchCode(h.getBatch()==null?null:h.getBatch().getBatchCode()).harvestDate(h.getHarvestDate()).quantity(h.getQuantity()).remarks(h.getRemarks()).build();}
+    private HarvestResponse mapToResponse(Harvest h){return HarvestResponse.builder().id(h.getId()).performedByEmployeeId(h.getPerformedByEmployeeId()).numberOfBoxes(h.getNumberOfBoxes()).batchId(h.getBatch()==null?null:h.getBatch().getId()).batchCode(h.getBatch()==null?null:h.getBatch().getBatchCode()).harvestDate(h.getHarvestDate()).quantity(h.getQuantity()).remarks(h.getRemarks()).createdBy(h.getCreatedBy()).createdAt(h.getCreatedAt()).build();}
 }

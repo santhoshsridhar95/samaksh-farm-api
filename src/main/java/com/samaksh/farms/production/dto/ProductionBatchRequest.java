@@ -7,6 +7,7 @@ import lombok.Data;
 
 @Data
 public class ProductionBatchRequest {
+    private Long performedByEmployeeId;
 
     @NotNull
     private MushroomType mushroomType;

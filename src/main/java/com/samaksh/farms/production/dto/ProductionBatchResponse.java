@@ -8,6 +8,7 @@ import lombok.Data;
 @Data
 @Builder
 public class ProductionBatchResponse {
+    private Long performedByEmployeeId;
 
     private Long id;
     private Integer damagedCovers;

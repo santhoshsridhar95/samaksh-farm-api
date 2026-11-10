@@ -11,6 +11,7 @@ public class SourcingReceipt {
     private String lastMutationKey;
     private Long vendorId;
     private LocalDate date;
+    private LocalDate plannedSellingDate;
     private String product;
     @Column(precision=18,scale=6) private BigDecimal quantityKg;
     @Column(precision=18,scale=6) private BigDecimal boxes;

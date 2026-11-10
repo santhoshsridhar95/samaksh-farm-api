@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class ProductionMovementResponse {
+    private Long performedByEmployeeId;
 
     private Long id;
 

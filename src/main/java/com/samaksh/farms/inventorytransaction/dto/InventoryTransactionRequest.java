@@ -6,6 +6,7 @@ import lombok.Data;
 
 @Data
 public class InventoryTransactionRequest {
+    private Long performedByEmployeeId;
 
     private String inventoryType;
 

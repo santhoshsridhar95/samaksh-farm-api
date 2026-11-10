@@ -24,5 +24,46 @@ class SourcingPaymentTest {
  @Test void partialRecoveryCreditsSelectedAccount(){var p=new SourcingPayment();p.setId(3L);p.setAdditionalAmount(n("300"));p.setDate(LocalDate.now());when(payments.findById(3L)).thenReturn(Optional.of(p));var result=service.recovery(null,new SourcingRequests.Recovery("refund",3L,9L,n("100"),LocalDate.now(),"Partial refund"),null);assertEquals(n("100"),result.getAmount());verify(money).vendorFunds(anyString(),eq(9L),eq(n("100")),any(),eq(true),anyString(),isNull());verify(recoveries).save(result);}
  @Test void recoveryCannotExceedRemainingAdvance(){var p=new SourcingPayment();p.setId(3L);p.setAdditionalAmount(n("300"));p.setDate(LocalDate.now());when(payments.findById(3L)).thenReturn(Optional.of(p));var earlier=new SourcingRecovery();earlier.setId(4L);earlier.setAmount(n("200"));when(recoveries.findByPaymentId(3L)).thenReturn(List.of(earlier));assertThrows(IllegalArgumentException.class,()->service.recovery(null,new SourcingRequests.Recovery("refund",3L,9L,n("101"),LocalDate.now(),""),null));verify(money,never()).vendorFunds(any(),any(),any(),any(),anyBoolean(),any(),any());}
  @Test void editedAdvanceCannotBeLessThanRecovered(){var p=new SourcingPayment();p.setId(3L);p.setReceiptId(2L);when(payments.findById(3L)).thenReturn(Optional.of(p));var recovered=new SourcingRecovery();recovered.setAmount(n("200"));recovered.setDate(LocalDate.now());when(recoveries.findByPaymentId(3L)).thenReturn(List.of(recovered));assertThrows(IllegalArgumentException.class,()->service.payment(3L,new SourcingRequests.Payment("edit",2L,7L,n("1700"),LocalDate.now(),"",n("100")),null));verify(money,never()).reverseLinked(any(),any(),any());}
-}
 
+ @Test void plannedSellingDateCanBeFutureAndDoesNotChangeReceivedDate(){
+  var today=com.samaksh.farms.common.time.BusinessTime.today();
+  var r=new SourcingRequests.Receipt("plan",1L,today,"Mushrooms","KG",n("10"),n("180"),n("100"),n("0"),"VENDOR","FARM",null,n("0"),"",n("0"),today.plusDays(1));
+  var result=service.receipt(2L,r,null).receipt();assertEquals(today,result.getDate());assertEquals(today.plusDays(1),result.getPlannedSellingDate());verify(receipts).save(result);
+ }
+ @Test void plannedSellingDateCannotPrecedeArrival(){
+  var today=com.samaksh.farms.common.time.BusinessTime.today();
+  var r=new SourcingRequests.Receipt("plan",1L,today,"Mushrooms","KG",n("10"),n("180"),n("100"),n("0"),"VENDOR","FARM",null,n("0"),"",n("0"),today.minusDays(1));
+  assertThrows(IllegalArgumentException.class,()->service.receipt(2L,r,null));verify(receipts,never()).save(any());
+ }
+
+ @Test void paymentBeforeReceiptPreservesActualDate() {
+  var date=LocalDate.now().minusMonths(1);
+  var result=service.payment(null,new SourcingRequests.Payment("early",2L,7L,n("500"),date,"Paid before delivery"),null);
+  assertEquals(date,result.getDate());
+  verify(money).record(argThat(r->r.date().equals(date)),isNull());
+ }
+ @Test void splitVendorPaymentSeparatesInvoiceAndAdvanceAndRetriesSafely() {
+  var saved=new ArrayList<SourcingPayment>();
+  when(payments.findAll()).thenAnswer(i->new ArrayList<>(saved));
+  when(payments.findByRequestKey(anyString())).thenAnswer(i->saved.stream().filter(p->p.getRequestKey().equals(i.getArgument(0))).findFirst());
+  doAnswer(i->{SourcingPayment p=i.getArgument(0);p.setId((long)saved.size()+1);saved.add(p);return p;}).when(payments).save(any());
+  var r=new SourcingRequests.SplitPayment(new SourcingRequests.Payment("split-vendor",2L,7L,n("1700"),LocalDate.now().minusDays(2),"Split",n("300")),List.of(new FundingAllocation(7L,n("800")),new FundingAllocation(8L,n("1200"))));
+  var result=service.splitPayment(r,null);
+  assertEquals(2,result.size());assertEquals(n("800"),result.get(0).getAmount());assertEquals(n("900"),result.get(1).getAmount());
+  assertEquals(n("300"),result.get(1).getAdditionalAmount());
+  verify(money).validateFunding(r.sources());
+  verify(money).record(argThat(p->p.sourceId()==8L && p.amount().equals(n("900"))),isNull());
+  verify(money).vendorFunds(anyString(),eq(8L),eq(n("300")),any(),eq(false),anyString(),isNull());
+  service.splitPayment(r,null);assertEquals(2,saved.size());
+  var changed=new SourcingRequests.SplitPayment(r.payment(),List.of(new FundingAllocation(7L,n("900")),new FundingAllocation(8L,n("1100"))));
+  assertThrows(IllegalArgumentException.class,()->service.splitPayment(changed,null));
+ }
+ @Test void splitVendorFailureValidatesTotalDueAndFundsBeforeSaving() {
+  var r=new SourcingRequests.SplitPayment(request("1800"),List.of(new FundingAllocation(7L,n("1800"))));
+  assertThrows(IllegalArgumentException.class,()->service.splitPayment(r,null));
+  doThrow(new IllegalArgumentException("Insufficient funds")).when(money).validateFunding(any());
+  var valid=new SourcingRequests.SplitPayment(request("500"),List.of(new FundingAllocation(7L,n("500"))));
+  assertThrows(IllegalArgumentException.class,()->service.splitPayment(valid,null));
+  verify(payments,never()).save(any());verify(money,never()).record(any(),any());
+ }
+}

@@ -6,6 +6,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "production_batch")
@@ -14,6 +15,7 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductionBatch {
+    private Long performedByEmployeeId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -64,4 +66,8 @@ public class ProductionBatch {
 
     @Enumerated(EnumType.STRING)
     private BatchStatus status;
+
+    private Long createdBy;
+
+    private LocalDateTime createdAt;
 }

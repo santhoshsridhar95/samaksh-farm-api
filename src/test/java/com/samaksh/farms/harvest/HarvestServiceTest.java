@@ -15,7 +15,7 @@ class HarvestServiceTest {
  final HarvestRepository repo=mock(HarvestRepository.class);
  final ProductionBatchRepository batches=mock(ProductionBatchRepository.class);
  final AuditService audit=mock(AuditService.class);
- final HarvestService service=new HarvestService(repo,batches,audit);
+ final HarvestService service=new HarvestService(repo,batches,audit,mock(com.samaksh.farms.employee.WorkAttributionService.class));
  HarvestServiceTest(){when(repo.save(any())).thenAnswer(a->{Harvest h=a.getArgument(0);h.setId(1L);return h;});}
  HarvestRequest request(){var r=new HarvestRequest();r.setQuantity(125.5);r.setHarvestDate(BusinessTime.today().minusDays(3));return r;}
  @Test void combinedHarvestPersistsUserDateWithoutLookingUpBatch(){var r=request();var result=service.createHarvest(r,null);assertNull(result.getBatchId());assertNull(result.getBatchCode());assertEquals(r.getHarvestDate(),result.getHarvestDate());assertEquals(125.5,result.getQuantity());verifyNoInteractions(batches);verify(repo).save(argThat(h->h.getBatch()==null&&h.getHarvestDate().equals(r.getHarvestDate())));verify(audit).createAudit(isNull(),eq("HARVEST"),eq("CREATE_HARVEST"),eq("1"),contains(r.getHarvestDate().toString()));}
@@ -24,4 +24,27 @@ class HarvestServiceTest {
  @Test void legacyRequestDefaultsToBusinessDate(){var r=request();r.setHarvestDate(null);assertEquals(BusinessTime.today(),service.createHarvest(r,null).getHarvestDate());}
  @Test void rejectsFutureDateAndNonPositiveQuantity(){var r=request();r.setHarvestDate(BusinessTime.today().plusDays(1));assertThrows(IllegalArgumentException.class,()->service.createHarvest(r,null));r.setHarvestDate(BusinessTime.today());r.setQuantity(0d);assertThrows(IllegalArgumentException.class,()->service.createHarvest(r,null));verify(repo,never()).save(any());}
  @Test void listingUnassignedAndLegacyHarvestsIsNullSafe(){when(repo.findAll()).thenReturn(List.of(Harvest.builder().id(1L).quantity(4d).build()));assertNull(service.getAllHarvests().getFirst().getBatchId());}
+
+ @Test void creationRecordsAuthenticatedUserAndCurrentAuditTime() {
+  var user=new com.samaksh.farms.user.entity.User();user.setId(42L);
+  var auth=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,List.of());
+  var before=BusinessTime.now();var result=service.createHarvest(request(),auth);
+  assertEquals(42L,result.getCreatedBy());assertFalse(result.getCreatedAt().isBefore(before));
+  assertFalse(result.getCreatedAt().isAfter(BusinessTime.now()));
+  assertEquals(request().getHarvestDate(),result.getHarvestDate());
+ }
+ @Test void editPreservesOriginalCreatorAndTimestamp() {
+  var created=BusinessTime.now().minusDays(10);
+  var h=Harvest.builder().id(1L).quantity(10d).createdBy(42L).createdAt(created).build();
+  when(repo.findById(1L)).thenReturn(Optional.of(h));
+  var user=new com.samaksh.farms.user.entity.User();user.setId(99L);
+  var auth=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(user,null,List.of());
+  var result=service.updateHarvest(1L,request(),auth);
+  assertEquals(42L,result.getCreatedBy());assertEquals(created,result.getCreatedAt());
+ }
+ @Test void editingLegacyHarvestDoesNotInventAttribution() {
+  when(repo.findById(1L)).thenReturn(Optional.of(Harvest.builder().id(1L).quantity(10d).build()));
+  var result=service.updateHarvest(1L,request(),null);
+  assertNull(result.getCreatedBy());assertNull(result.getCreatedAt());
+ }
 }

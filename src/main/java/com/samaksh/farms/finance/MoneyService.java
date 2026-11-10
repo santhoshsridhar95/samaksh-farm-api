@@ -154,6 +154,58 @@ public class MoneyService {
         return saved;
     }
 
+    public record SplitRequest(@jakarta.validation.Valid @jakarta.validation.constraints.NotNull MoneyRequest entry,
+            @jakarta.validation.constraints.NotEmpty @jakarta.validation.constraints.Size(max=20)
+            List<@jakarta.validation.Valid FundingAllocation> sources) {}
+
+    public List<MoneyEntry> recordSplit(SplitRequest request, Authentication auth) {
+        prepare();
+        var r = request.entry();
+        if (!"EXPENSE".equals(r.type())) throw new IllegalArgumentException("Split funding is supported for expenses");
+        FundingAllocation.validate(request.sources(), r.amount());
+        String fingerprint = fingerprint(request);
+        var prior = new ArrayList<MoneyEntry>();
+        for (int i = 0; i < request.sources().size(); i++) {
+            var existing = entries.findByRequestKey("split:" + r.requestKey() + ":" + i);
+            if (existing.isPresent()) {
+                if (!Objects.equals(existing.get().getRequestFingerprint(), fingerprint))
+                    throw new IllegalArgumentException("This split payment was already saved with different details");
+                prior.add(existing.get());
+            }
+        }
+        if (!prior.isEmpty()) {
+            if (prior.size() != request.sources().size()) throw new IllegalArgumentException("Incomplete split payment; refresh before retrying");
+            return prior;
+        }
+        validateFunding(request.sources());
+        var requests = new ArrayList<MoneyRequest>();
+        for (int i = 0; i < request.sources().size(); i++) {
+            var source = request.sources().get(i);
+            var part = new MoneyRequest("split:" + r.requestKey() + ":" + i, r.type(), source.accountId(),
+                    r.destinationId(), source.amount(), r.description(), r.payee(), r.salaryMonth(), r.date(), r.employeeId());
+            validateShape(part);
+            requests.add(part);
+        }
+        var saved = new ArrayList<MoneyEntry>();
+        for (var part : requests) {
+            var entry = record(part, auth);
+            entry.setRequestFingerprint(fingerprint);
+            saved.add(entry);
+        }
+        return saved;
+    }
+
+    // Personal pockets represent liabilities, never a prepaid spending limit.
+    public void validateFunding(List<FundingAllocation> sources) {
+        prepare();
+        var balances = balances(entries.findAll());
+        for (var source : sources) {
+            var account = getAccount(source.accountId());
+            if (!"PERSONAL".equals(account.getKind()) && balances.getOrDefault(account.getId(), BigDecimal.ZERO).compareTo(source.amount()) < 0)
+                throw new IllegalArgumentException("Insufficient farm money in " + account.getName() + ". Allocate the remainder to a personal pocket if paid personally.");
+        }
+    }
+
     private void validateEmployee(MoneyRequest r) {
         if(r.employeeId()==null)return; // Preserve unlinked historical payments.
         if(!Set.of("SALARY","EXPENSE").contains(r.type()))throw new IllegalArgumentException("Only salary and expense entries can be linked to an employee");

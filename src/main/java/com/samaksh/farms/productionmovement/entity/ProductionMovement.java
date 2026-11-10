@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductionMovement {
+    private Long performedByEmployeeId;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

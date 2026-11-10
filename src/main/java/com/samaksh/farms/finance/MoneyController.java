@@ -14,6 +14,7 @@ public class MoneyController {
     @GetMapping public ApiResponse<?> dashboard() { return ok(service.dashboard()); }
     @PostMapping("/accounts") public ApiResponse<?> account(@RequestBody Map<String,String> r) { return ok(service.createAccount(r.get("name"), r.get("kind"))); }
     @PostMapping("/entries") public ApiResponse<?> record(@Valid @RequestBody MoneyRequest r, Authentication auth) { return ok(service.record(r, auth)); }
+    @PostMapping("/entries/split") public ApiResponse<?> split(@Valid @RequestBody MoneyService.SplitRequest r, Authentication auth) { return ok(service.recordSplit(r, auth)); }
     @PutMapping("/entries/{id}") @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ApiResponse<?> edit(@PathVariable Long id, @Valid @RequestBody MoneyService.EditRequest r, Authentication auth) { return ok(service.edit(id, r, auth)); }
     @PostMapping("/settle") public ApiResponse<?> settle(@Valid @RequestBody MoneyService.SettlementRequest r, Authentication auth) { return ok(service.settle(r, auth)); }

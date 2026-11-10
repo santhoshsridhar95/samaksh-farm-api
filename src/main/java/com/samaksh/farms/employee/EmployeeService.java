@@ -25,6 +25,7 @@ public class EmployeeService {
  private final UserRepository users;
  private final AuditService audit;
  private final EntityManager em;
+ private final FarmWorkReportService farmWork;
 
  public record ProfileRequest(@NotBlank @Size(max=80) String requestKey,
    @NotBlank @Size(max=150) String name,@NotBlank @Size(max=150) String designation,
@@ -104,7 +105,7 @@ public class EmployeeService {
      var rows=sales.findByCreatedByUserIdAndSaleDateGreaterThanEqualAndSaleDateLessThan(e.getUserId(),from.atStartOfDay(),to.plusDays(1).atStartOfDay());
      for(var s:rows)activity.add(new Activity("Sale #"+s.getId(),s.getSaleDate().toLocalDate(),"SALE",decimal(s.getQuantity()),s.getProduct()==null||s.getProduct().getUnitType()==null?"units":s.getProduct().getUnitType().name(),s.getCustomer()==null?"Direct sale":s.getCustomer().getCustomerName(),decimal(s.getTotalAmount()),decimal(s.getExchangeBoxes()),decimal(s.getReturnedBoxes())));
    }
-   return Map.of("employee",e,"salaryHistory",history,"payroll",payroll,"payments",payments,"contributions",contributions,"activity",activity);
+   return Map.of("employee",e,"salaryHistory",history,"payroll",payroll,"payments",payments,"contributions",contributions,"activity",activity,"farmWork",farmWork.report(id,from,to));
  }
  static BigDecimal salaryFor(List<EmployeeSalary> history,Employee e,YearMonth month){
    if(month.atEndOfMonth().isBefore(e.getJoinedOn())||(e.getLeftOn()!=null&&month.atDay(1).isAfter(e.getLeftOn())))return BigDecimal.ZERO;
