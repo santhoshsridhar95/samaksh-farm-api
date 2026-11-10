@@ -25,7 +25,7 @@ class RoleAccessTest {
   @Bean Probe probe(){return new Probe();}
  }
  @RestController static class Probe {
-  @RequestMapping({"/api/money","/api/sourcing","/api/orders","/api/farm-dashboard","/api/customers","/api/customers/1","/api/sales","/api/direct-sales","/api/production","/api/inventory-transactions","/api/harvest"}) String ok(){return "ok";}
+  @RequestMapping({"/","/api/employees","/api/money","/api/sourcing","/api/orders","/api/farm-dashboard","/api/customers","/api/customers/1","/api/sales","/api/direct-sales","/api/production","/api/inventory-transactions","/api/harvest"}) String ok(){return "ok";}
  }
  @BeforeEach void setup(){context=new AnnotationConfigWebApplicationContext();context.setServletContext(new MockServletContext());context.register(Setup.class);context.refresh();mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();}
  @AfterEach void close(){context.close();}
@@ -47,6 +47,7 @@ class RoleAccessTest {
  }
  @Test void adminRetainsAccessAndAnonymousIsRejected()throws Exception{
   for(String path:new String[]{"/api/money","/api/sourcing","/api/orders","/api/sales","/api/production"})mvc.perform(get(path).with(user("admin").roles("SUPER_ADMIN"))).andExpect(status().isOk());
+    mvc.perform(get("/")).andExpect(status().isOk());
   mvc.perform(get("/api/money")).andExpect(status().isUnauthorized());
  }
 }

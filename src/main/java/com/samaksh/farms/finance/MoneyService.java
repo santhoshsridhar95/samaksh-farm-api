@@ -81,6 +81,19 @@ public class MoneyService {
                 "Sale #" + saleId + " collection", null, null, BusinessTime.today(), auth.getName(), saleId, null);
     }
 
+    public void correctCollection(Long saleId,Long userId,String name,String email,double difference,LocalDate date,Authentication auth) {
+        prepare();var delta=money(difference);if(delta.signum()==0)return;
+        var journal=entries.findAll();
+        // The first cash entry identifies the original collector even if later payments changed the sale's collector fields.
+        Long originalHolder=journal.stream().filter(e->Objects.equals(e.getSaleId(),saleId)&&Set.of("COLLECTION","LEGACY_COLLECTION").contains(e.getType())&&e.getDestinationId()!=null)
+            .min(Comparator.comparing(MoneyEntry::getId)).map(MoneyEntry::getDestinationId).orElse(null);
+        var holder=originalHolder==null?holder(userId,name,email):getAccount(originalHolder);
+        if(delta.signum()<0 && balances(journal).getOrDefault(holder.getId(),BigDecimal.ZERO).compareTo(delta.abs())<0)
+            throw new IllegalArgumentException("The collector has already spent or transferred this money. Return sufficient funds to their held-money account before reducing this receipt.");
+        var entry=add(UUID.randomUUID().toString(),"COLLECTION_CORRECTION",delta.signum()<0?holder.getId():null,delta.signum()>0?holder.getId():null,delta.abs(),"Receipt correction for sale #"+saleId,null,null,date,auth.getName(),saleId,null);
+        audit.createAudit(auth,"MONEY","CORRECT_COLLECTION",entry.getId().toString(),"Sale #"+saleId+"; cash adjustment "+delta+"; holder "+holder.getName());
+    }
+
     public Map<String, Object> dashboard() {
         var allAccounts = availableAccounts();
         var allEntries = entries.findAllByOrderByDateDescIdDesc();
@@ -133,20 +146,38 @@ public class MoneyService {
         if (source != null && !source.getKind().equals("PERSONAL")) requireFunds(source.getId(), r.amount());
         var saved = add(r.requestKey(), r.type(), r.sourceId(), r.destinationId(), r.amount(), r.description(), r.payee(), r.salaryMonth(), r.date(), auth.getName(), null, null);
         saved.setRequestFingerprint(fingerprint(r));
+        linkEmployee(saved, r);
         audit.createAudit(auth, "MONEY", "RECORD_" + r.type(), saved.getId().toString(),
                 r.description() + ": Rs. " + r.amount() + ", from: " + (source == null ? "Outside funds" : source.getName())
                         + ", to: " + (destination == null ? r.payee() : destination.getName()) + ", date: " + r.date()
-                        + (r.salaryMonth() == null ? "" : ", salary month: " + r.salaryMonth()));
+                        + ", employeeId: " + r.employeeId() + (r.salaryMonth() == null ? "" : ", salary month: " + r.salaryMonth()));
         return saved;
     }
 
+    private void validateEmployee(MoneyRequest r) {
+        if(r.employeeId()==null)return; // Preserve unlinked historical payments.
+        if(!Set.of("SALARY","EXPENSE").contains(r.type()))throw new IllegalArgumentException("Only salary and expense entries can be linked to an employee");
+        var employee=entityManager.find(com.samaksh.farms.employee.Employee.class,r.employeeId());
+        if(employee==null)throw new IllegalArgumentException("Employee not found");
+        if("SALARY".equals(r.type())){
+            YearMonth month;
+            try{month=YearMonth.parse(r.salaryMonth());}catch(Exception ex){throw new IllegalArgumentException("Salary month is required (YYYY-MM)");}
+            if(month.atEndOfMonth().isBefore(employee.getJoinedOn())||(employee.getLeftOn()!=null&&month.atDay(1).isAfter(employee.getLeftOn())))throw new IllegalArgumentException("Salary month must fall within employment dates");
+        }
+    }
+    private void linkEmployee(MoneyEntry entry,MoneyRequest r){
+        entry.setEmployeeId(r.employeeId());
+        if(r.employeeId()!=null)entry.setPayee(entityManager.find(com.samaksh.farms.employee.Employee.class,r.employeeId()).getName());
+    }
     private void validateShape(MoneyRequest r) {
         if (!Set.of("EXPENSE", "SALARY", "TRANSFER", "REIMBURSEMENT", "OPENING", "CONTRIBUTION").contains(r.type()))
             throw new IllegalArgumentException("Invalid transaction type");
         MoneyAccount source = r.sourceId() == null ? null : getAccount(r.sourceId());
         MoneyAccount destination = r.destinationId() == null ? null : getAccount(r.destinationId());
+        validateEmployee(r);
         boolean incoming = Set.of("OPENING", "CONTRIBUTION").contains(r.type());
-        if (incoming && (source != null || destination == null || destination.getKind().equals("PERSONAL")))
+        if (incoming && (destination == null || destination.getKind().equals("PERSONAL") ||
+                (source != null && (!r.type().equals("CONTRIBUTION") || !source.getKind().equals("PERSONAL")))))
             throw new IllegalArgumentException("Choose a farm account to receive the money");
         if (!incoming && source == null) throw new IllegalArgumentException("Choose the account paying this amount");
         if (r.type().equals("TRANSFER") && (destination == null || destination.getKind().equals("PERSONAL") || source.getKind().equals("PERSONAL") || source.getId().equals(destination.getId())))
@@ -203,6 +234,7 @@ public class MoneyService {
         String before = entryDetails(original);
         original.setType(r.type()); original.setSourceId(r.sourceId()); original.setDestinationId(r.destinationId()); original.setAmount(r.amount());
         original.setDate(r.date()); original.setDescription(r.description()); original.setPayee(r.payee()); original.setSalaryMonth(r.salaryMonth());
+        linkEmployee(original, r);
         original.setRevision(revision + 1); original.setLastEditRequestKey(r.requestKey()); original.setLastEditFingerprint(fingerprint(r));
         original.setUpdatedAt(BusinessTime.now()); original.setUpdatedBy(auth.getName());
         entries.save(original);
@@ -213,7 +245,7 @@ public class MoneyService {
     private String entryDetails(MoneyEntry e) {
         return "type=" + e.getType() + ", amount=" + e.getAmount() + ", date=" + e.getDate()
                 + ", from=" + e.getSourceId() + ", to=" + e.getDestinationId() + ", payee=" + e.getPayee()
-                + ", salaryMonth=" + e.getSalaryMonth() + ", purpose=" + e.getDescription();
+                + ", employeeId=" + e.getEmployeeId() + ", salaryMonth=" + e.getSalaryMonth() + ", purpose=" + e.getDescription();
     }
 
     public MoneyEntry settle(SettlementRequest request, Authentication auth) {
@@ -226,8 +258,8 @@ public class MoneyService {
         }
         var source = getAccount(request.sourceId());
         var destination = getAccount(request.destinationId());
-        if (!Set.of("HELD", "HISTORICAL").contains(source.getKind()) || !"BANK".equals(destination.getKind()))
-            throw new IllegalArgumentException("Settlement must move a person's farm money into a farm bank account");
+        if (source.getKind().equals("PERSONAL") || destination.getKind().equals("PERSONAL") || source.getId().equals(destination.getId()))
+            throw new IllegalArgumentException("Choose two different farm accounts or holders to transfer the full balance");
         var amount = balances(entries.findAll()).getOrDefault(source.getId(), BigDecimal.ZERO);
         if (amount.signum() <= 0) throw new IllegalArgumentException("There is no positive balance to settle");
         return record(new MoneyRequest("settle:" + request.requestKey(), "TRANSFER", source.getId(), destination.getId(), amount,
@@ -236,6 +268,39 @@ public class MoneyService {
 
     public record SettlementRequest(@jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=70) String requestKey,
                                     @jakarta.validation.constraints.NotNull Long sourceId, @jakarta.validation.constraints.NotNull Long destinationId) {}
+
+    public record ReconciliationRequest(
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=70) String requestKey,
+            @jakarta.validation.constraints.NotNull Long accountId,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.DecimalMin("0") @jakarta.validation.constraints.Digits(integer=12,fraction=2) BigDecimal actualBalance,
+            @jakarta.validation.constraints.NotNull @jakarta.validation.constraints.Digits(integer=12,fraction=2) BigDecimal expectedBalance,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=900) String reason) {}
+
+    public MoneyEntry reconcile(ReconciliationRequest r, Authentication auth) {
+        prepare(); // Same database lock as collections, imports and spending.
+        String key = "reconcile:" + r.requestKey();
+        var previous = entries.findByRequestKey(key);
+        if (previous.isPresent()) {
+            if (!Objects.equals(previous.get().getRequestFingerprint(), fingerprint(r)))
+                throw new IllegalArgumentException("This balance correction was already saved with different details");
+            return previous.get();
+        }
+        var account = getAccount(r.accountId());
+        if (account.getKind().equals("PERSONAL")) throw new IllegalArgumentException("Set actual balances for farm money holders, bank or savings accounts. Personal amounts represent money owed, not cash available.");
+        if (r.actualBalance() == null || r.actualBalance().signum() < 0) throw new IllegalArgumentException("Actual money held cannot be negative");
+        var before = balances(entries.findAll()).getOrDefault(account.getId(), BigDecimal.ZERO);
+        if (r.expectedBalance() == null || before.compareTo(r.expectedBalance()) != 0)
+            throw new IllegalArgumentException("This account balance changed. Refresh and check the actual amount again.");
+        var difference = r.actualBalance().subtract(before);
+        var saved = add(key, "BALANCE_ADJUSTMENT", difference.signum() < 0 ? account.getId() : null,
+                difference.signum() >= 0 ? account.getId() : null, difference.abs(),
+                "Actual balance set: " + before + " -> " + r.actualBalance() + ". " + r.reason().trim(),
+                null, null, BusinessTime.today(), auth.getName(), null, null);
+        saved.setRequestFingerprint(fingerprint(r));
+        audit.createAudit(auth, "MONEY", "SET_ACTUAL_BALANCE", saved.getId().toString(),
+                "Account #" + account.getId() + " (" + account.getName() + "): before=" + before + ", actual=" + r.actualBalance() + ", adjustment=" + difference + "; reason=" + r.reason());
+        return saved;
+    }
 
     public MoneyEntry reverse(Long id, String reason, Authentication auth) {
         return reverseEntry(id, reason, auth, false);
@@ -266,6 +331,7 @@ public class MoneyService {
         if (original.getDestinationId() != null && !getAccount(original.getDestinationId()).getKind().equals("PERSONAL")) requireFunds(original.getDestinationId(), original.getAmount());
         var saved = add("reversal-" + id, "REVERSAL", original.getDestinationId(), original.getSourceId(), original.getAmount(),
                 reason.trim(), original.getPayee(), original.getSalaryMonth(), BusinessTime.today(), auth.getName(), null, id);
+        saved.setEmployeeId(original.getEmployeeId());
         audit.createAudit(auth, "MONEY", "REVERSE", id.toString(), "Reversed " + original.getType() + " Rs. " + original.getAmount()
                 + "; reversal entry #" + saved.getId() + "; reason: " + reason);
         return saved;
