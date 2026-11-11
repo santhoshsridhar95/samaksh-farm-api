@@ -27,8 +27,9 @@ public class HarvestService {
         var h=id==null?new Harvest():harvestRepository.findById(id).orElseThrow(()->new ResourceNotFoundException("Harvest",id));
         String before=id==null?"":mapToResponse(h).toString();
         attribution.validate(r.getPerformedByEmployeeId(), h.getPerformedByEmployeeId(), date, auth);
-        if(r.getNumberOfBoxes()!=null && r.getNumberOfBoxes()<0)throw new IllegalArgumentException("Number of boxes cannot be negative");
-        h.setPerformedByEmployeeId(r.getPerformedByEmployeeId());h.setNumberOfBoxes(r.getNumberOfBoxes());
+        Integer boxes=null;
+        if(r.getNumberOfBoxes()!=null){try{boxes=r.getNumberOfBoxes().intValueExact();}catch(ArithmeticException ex){throw new IllegalArgumentException("Number of boxes must be a whole number within range");}if(boxes<0)throw new IllegalArgumentException("Number of boxes cannot be negative");}
+        h.setPerformedByEmployeeId(r.getPerformedByEmployeeId());h.setNumberOfBoxes(boxes);
         h.setBatch(batch);h.setHarvestDate(date);h.setQuantity(r.getQuantity());h.setRemarks(r.getRemarks());
         // Set creator and timestamp for new entries
         if (id == null) {

@@ -510,6 +510,28 @@ public class SaleService {
         );
     }
 
+    public void correctDirectSale(Long id, SaleRequest request, String location, Authentication auth) {
+        moneyService.prepare();
+        if(!isSuperAdmin(currentUser(auth)))throw new org.springframework.security.access.AccessDeniedException("Only super admin can edit purchases");
+        var sale=saleRepository.findById(id).orElseThrow(()->new IllegalArgumentException("Sale not found"));
+        if(!"DIRECT".equals(sale.getSalesChannel()))throw new IllegalArgumentException("Choose a direct sale");
+        var customer=customerRepository.findById(request.getCustomerId()).orElseThrow(()->new IllegalArgumentException("Customer not found"));
+        if(!"DIRECT".equals(customer.getCustomerType()))throw new IllegalArgumentException("Choose a direct customer");
+        var collector=userRepository.findById(request.getCollectorUserId()).orElseThrow(()->new IllegalArgumentException("Collector not found"));
+        if(!Boolean.TRUE.equals(collector.getActive())&&!java.util.Objects.equals(collector.getId(),sale.getCollectorUserId()))throw new IllegalArgumentException("Choose an active collector");
+        var total=java.math.BigDecimal.valueOf(request.getQuantity()).multiply(java.math.BigDecimal.valueOf(request.getUnitPrice())).setScale(2,java.math.RoundingMode.HALF_UP);
+        if(request.getQuantity()<=0 || request.getUnitPrice()<=0 || request.getAmountCollected()<0 || java.math.BigDecimal.valueOf(request.getAmountCollected()).compareTo(total)>0)throw new IllegalArgumentException("Invalid quantity, price or collection");
+        if(request.getDeliveryDate()==null||request.getDeliveryDate().isAfter(BusinessTime.today()))throw new IllegalArgumentException("Choose a purchase date no later than today");
+        if(!java.util.Objects.equals(sale.getCollectorUserId(),collector.getId()) || Math.round(saleCollected(sale)*100)!=Math.round(request.getAmountCollected()*100))
+        moneyService.correctDirectCollection(id,collector.getId(),collector.getName(),collector.getEmail(),request.getAmountCollected(),request.getDeliveryDate(),auth);
+        sale.setCustomer(customer);sale.setProduct(resolveProduct(request,request.getUnitPrice()));sale.setQuantity(request.getQuantity());sale.setUnitPrice(request.getUnitPrice());
+        sale.setTotalAmount(total.doubleValue());sale.setAmountCollected(request.getAmountCollected());sale.setAmountReceivedToday(request.getAmountCollected());sale.setPendingAmount(total.subtract(java.math.BigDecimal.valueOf(request.getAmountCollected())).doubleValue());
+        sale.setPaymentStatus(resolvePaymentStatus(total.doubleValue(),request.getAmountCollected()));
+        sale.setCollectorUserId(collector.getId());sale.setCollectorName(collector.getName());sale.setCollectorEmail(collector.getEmail());
+        sale.setSaleDate(request.getDeliveryDate().atTime(sale.getSaleDate()==null?BusinessTime.now().toLocalTime():sale.getSaleDate().toLocalTime()));
+        sale.setPurchaseLocation(location.trim());sale.setRemarks(request.getRemarks());applyUpdatedBy(sale,auth);saleRepository.save(sale);
+    }
+
     public SaleResponse updateSaleEntry(
             Long saleId,
             SaleRequest request,

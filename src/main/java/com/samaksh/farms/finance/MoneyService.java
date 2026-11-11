@@ -94,6 +94,30 @@ public class MoneyService {
         audit.createAudit(auth,"MONEY","CORRECT_COLLECTION",entry.getId().toString(),"Sale #"+saleId+"; cash adjustment "+delta+"; holder "+holder.getName());
     }
 
+    public void correctDirectCollection(Long saleId, Long collectorId, String name, String email, double collected, LocalDate date, Authentication auth) {
+        prepare();
+        var journal=entries.findAll();
+        var receiptTypes=Set.of("COLLECTION","LEGACY_COLLECTION","COLLECTION_CORRECTION");
+        var held=new HashMap<Long,BigDecimal>();
+        for(var e:journal)if(Objects.equals(e.getSaleId(),saleId)&&receiptTypes.contains(e.getType())) {
+            if(e.getDestinationId()!=null)held.merge(e.getDestinationId(),e.getAmount(),BigDecimal::add);
+            if(e.getSourceId()!=null)held.merge(e.getSourceId(),e.getAmount().negate(),BigDecimal::add);
+        }
+        var destination=holder(collectorId,name,email);held.putIfAbsent(destination.getId(),BigDecimal.ZERO);
+        var available=balances(journal);
+        for(var item:held.entrySet()) {
+            var desired=item.getKey().equals(destination.getId())?money(collected):BigDecimal.ZERO;
+            var delta=desired.subtract(item.getValue());
+            if(delta.signum()<0 && available.getOrDefault(item.getKey(),BigDecimal.ZERO).compareTo(delta.abs())<0)
+                throw new IllegalArgumentException("Return sufficient funds to the previous collector's held-money account before correcting this receipt");
+        }
+        for(var item:held.entrySet()) {
+            var desired=item.getKey().equals(destination.getId())?money(collected):BigDecimal.ZERO;
+            var delta=desired.subtract(item.getValue());if(delta.signum()==0)continue;
+            add(UUID.randomUUID().toString(),"COLLECTION_CORRECTION",delta.signum()<0?item.getKey():null,delta.signum()>0?item.getKey():null,delta.abs(),"Direct sale #"+saleId+" receipt correction",null,null,date,auth.getName(),saleId,null);
+        }
+    }
+
     public Map<String, Object> dashboard() {
         var allAccounts = availableAccounts();
         var allEntries = entries.findAllByOrderByDateDescIdDesc();
@@ -368,6 +392,13 @@ public class MoneyService {
         audit.createAudit(auth,"MONEY",saved.getType(),saved.getId().toString(),description+"; amount "+amount+"; account "+account.getName()+"; date "+date);
         return saved;
     }
+    public void validatePersonalRefund(Long accountId, BigDecimal refund) {
+        if (accountId == null || refund.signum() <= 0 || !getAccount(accountId).getKind().equals("PERSONAL")) return;
+        var balance = balances(entries.findAll()).getOrDefault(accountId, BigDecimal.ZERO);
+        if (balance.add(refund).signum() > 0)
+            throw new IllegalArgumentException("This correction would reverse personal spending that has already been reimbursed. Correct its reimbursements first.");
+    }
+
     public MoneyEntry reverseLinked(Long id, String reason, Authentication auth) {
         return reverseEntry(id, reason, auth, true);
     }

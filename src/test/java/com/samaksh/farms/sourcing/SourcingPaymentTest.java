@@ -20,6 +20,25 @@ class SourcingPaymentTest {
  @Test void fullPaymentUsesChosenAccountAndLinksLedger(){var p=service.payment(null,request("1700"),null);assertEquals(n("1700"),p.getAmount());assertEquals(7L,p.getSourceAccountId());assertEquals(99L,p.getMoneyEntryId());verify(money).record(argThat(r->r.sourceId()==7L && r.amount().compareTo(n("1700"))==0 && r.type().equals("EXPENSE")),isNull());verify(payments).save(p);}
  @Test void paymentCannotExceedDueAfterDeduction(){assertThrows(IllegalArgumentException.class,()->service.payment(null,request("1800"),null));verify(money,never()).record(any(),any());}
  @Test void duplicatePaymentDoesNotDebitAgain(){var prior=new SourcingPayment();prior.setRequestFingerprint(MoneyService.fingerprint(request("500")));when(payments.findByRequestKey("key")).thenReturn(Optional.of(prior));assertSame(prior,service.payment(null,request("500"),null));verify(money,never()).record(any(),any());}
+ @Test void revertingPaymentRestoresLinkedFundsAndRetryDoesNotReverseTwice() {
+  var p=new SourcingPayment();p.setId(3L);p.setReceiptId(2L);p.setAmount(n("1700"));p.setAdditionalAmount(n("100"));p.setMoneyEntryId(98L);p.setAdvanceEntryId(99L);
+  when(payments.findById(3L)).thenReturn(Optional.of(p));when(payments.findAll()).thenReturn(List.of(p));
+  var request=new SourcingRequests.Payment("revert",2L,7L,n("0"),LocalDate.now(),"Correction",n("0"));
+  service.payment(3L,request,null);service.payment(3L,request,null);
+  verify(money).reverseLinked(eq(98L),anyString(),isNull());verify(money).reverseLinked(eq(99L),anyString(),isNull());
+  verify(money,never()).record(any(),any());verify(payments,times(1)).save(p);
+  assertEquals(0,p.getAmount().signum());assertNull(p.getMoneyEntryId());assertNull(p.getAdvanceEntryId());
+ }
+ @Test void settledPaymentCanChangeFundingAccountWithoutExceedingInvoice() {
+  var p=new SourcingPayment();p.setId(3L);p.setReceiptId(2L);p.setAmount(n("1700"));p.setMoneyEntryId(98L);
+  when(payments.findById(3L)).thenReturn(Optional.of(p));when(payments.findAll()).thenReturn(List.of(p));
+  service.payment(3L,new SourcingRequests.Payment("edit-source",2L,8L,n("1700"),LocalDate.now(),"Correction"),null);
+  verify(money).reverseLinked(eq(98L),anyString(),isNull());
+  verify(money).record(argThat(r->r.sourceId()==8L && r.amount().compareTo(n("1700"))==0),isNull());
+ }
+ @Test void newZeroPaymentIsRejected() {
+  assertThrows(IllegalArgumentException.class,()->service.payment(null,request("0"),null));verify(payments,never()).save(any());
+ }
  @Test void additionalPaymentIsSeparateFromInvoiceExpense(){var p=service.payment(null,new SourcingRequests.Payment("extra",2L,7L,n("1700"),LocalDate.now(),"Extra",n("300")),null);assertEquals(n("300"),p.getAdditionalAmount());verify(money).record(argThat(r->r.amount().compareTo(n("1700"))==0),isNull());verify(money).vendorFunds(anyString(),eq(7L),eq(n("300")),any(),eq(false),anyString(),isNull());}
  @Test void partialRecoveryCreditsSelectedAccount(){var p=new SourcingPayment();p.setId(3L);p.setAdditionalAmount(n("300"));p.setDate(LocalDate.now());when(payments.findById(3L)).thenReturn(Optional.of(p));var result=service.recovery(null,new SourcingRequests.Recovery("refund",3L,9L,n("100"),LocalDate.now(),"Partial refund"),null);assertEquals(n("100"),result.getAmount());verify(money).vendorFunds(anyString(),eq(9L),eq(n("100")),any(),eq(true),anyString(),isNull());verify(recoveries).save(result);}
  @Test void recoveryCannotExceedRemainingAdvance(){var p=new SourcingPayment();p.setId(3L);p.setAdditionalAmount(n("300"));p.setDate(LocalDate.now());when(payments.findById(3L)).thenReturn(Optional.of(p));var earlier=new SourcingRecovery();earlier.setId(4L);earlier.setAmount(n("200"));when(recoveries.findByPaymentId(3L)).thenReturn(List.of(earlier));assertThrows(IllegalArgumentException.class,()->service.recovery(null,new SourcingRequests.Recovery("refund",3L,9L,n("101"),LocalDate.now(),""),null));verify(money,never()).vendorFunds(any(),any(),any(),any(),anyBoolean(),any(),any());}

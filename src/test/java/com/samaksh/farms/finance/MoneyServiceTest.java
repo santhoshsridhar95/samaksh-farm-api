@@ -42,6 +42,17 @@ class MoneyServiceTest {
         when(entries.existsByReversalOf(anyLong())).thenAnswer(i -> journal.stream().anyMatch(e -> Objects.equals(e.getReversalOf(), i.getArgument(0))));
         when(entries.save(any())).thenAnswer(i -> { MoneyEntry e = i.getArgument(0); if (e.getId() == null) { e.setId((long) journal.size()+1); journal.add(e); } return e; });
     }
+    @Test void directCorrectionMovesOnlyThisPurchasesCashAndRetryDoesNotDuplicate(){
+        service.collection(1L,"Santosh",null,100d,10L,auth);service.collection(1L,"Santosh",null,50d,11L,auth);
+        service.correctDirectCollection(10L,2L,"Sandeep",null,80d,LocalDate.of(2026,1,1),auth);
+        assertEquals(new BigDecimal("50.00"),balance(1L));assertEquals(new BigDecimal("80.00"),balance(2L));int count=journal.size();
+        service.correctDirectCollection(10L,2L,"Sandeep",null,80d,LocalDate.of(2026,1,1),auth);assertEquals(count,journal.size());
+        service.correctDirectCollection(10L,2L,"Sandeep",null,0d,LocalDate.of(2026,1,1),auth);assertEquals(0,balance(2L).signum());assertEquals(new BigDecimal("50.00"),balance(1L));
+    }
+    @Test void directCorrectionRejectsSpentReceiptsBeforeWriting(){
+        service.collection(1L,"Santosh",null,100d,10L,auth);service.record(request("TRANSFER",1L,3L,"100"),auth);int count=journal.size();
+        assertThrows(IllegalArgumentException.class,()->service.correctDirectCollection(10L,2L,"Sandeep",null,100d,LocalDate.of(2026,1,1),auth));assertEquals(count,journal.size());
+    }
     @Test void employeeSalaryLinksSurviveReversalAndRetries() {
         var employee=new com.samaksh.farms.employee.Employee();employee.setId(7L);employee.setName("Founder");employee.setJoinedOn(LocalDate.of(2026,1,1));
         when(em.find(com.samaksh.farms.employee.Employee.class,7L)).thenReturn(employee);
@@ -240,6 +251,23 @@ class MoneyServiceTest {
   assertThrows(IllegalArgumentException.class,()->service.correctCollection(10L,1L,"Santosh",null,-1,LocalDate.now(),auth));
  }
 
+    @Test void vendorCorrectionCannotRefundAlreadyReimbursedPersonalSpending() {
+        service.record(request("EXPENSE",4L,null,"350"),auth);
+        service.validatePersonalRefund(4L,new BigDecimal("350"));
+        service.record(request("OPENING",null,3L,"350"),auth);
+        service.record(request("REIMBURSEMENT",3L,4L,"350"),auth);
+        assertThrows(IllegalArgumentException.class,()->service.validatePersonalRefund(4L,new BigDecimal("350")));
+        service.validatePersonalRefund(4L,BigDecimal.ZERO);
+    }
+
+    @Test void personalExpenseOf1800AddsToExisting350Debt() {
+        service.record(request("EXPENSE",4L,null,"350"),auth);
+        service.record(request("EXPENSE",4L,null,"1800"),auth);
+        assertEquals(0,balance(4L).compareTo(new BigDecimal("-2150")));
+        assertEquals(0,balance(1L).signum());
+        assertEquals(0,balance(3L).signum());
+    }
+
     @Test void personalExpensesAndAdvancesCanStartAtZeroAndIncreaseDebt() {
         var date = com.samaksh.farms.common.time.BusinessTime.today().minusMonths(2);
         service.record(new MoneyRequest("personal-first", "EXPENSE", 4L, null, new BigDecimal("750"), "Past expense", null, null, date), auth);
@@ -281,6 +309,41 @@ class MoneyServiceTest {
         service.record(new MoneyRequest("repayment","REIMBURSEMENT",1L,4L,new BigDecimal("500"),"Repay personal spending",null,null,com.samaksh.farms.common.time.BusinessTime.today()),auth);
         assertEquals(0,balance(4L).signum());assertEquals(0,balance(1L).signum());
         assertEquals(1,journal.stream().filter(e->e.getType().equals("EXPENSE")).count());
+    }
+
+    @Test void vendorPaymentsUseFarmBalancesOrPersonalDebtAndCanBeReimbursed() {
+        wallet(5L,"FARM_SAVINGS","Savings","SAVINGS");
+        var vendors=mock(com.samaksh.farms.sourcing.SourcingVendorRepository.class);
+        var receipts=mock(com.samaksh.farms.sourcing.SourcingReceiptRepository.class);
+        var payments=mock(com.samaksh.farms.sourcing.SourcingPaymentRepository.class);
+        var vendor=new com.samaksh.farms.sourcing.SourcingVendor();vendor.setId(1L);vendor.setKind("VENDOR");vendor.setName("Grower");
+        when(vendors.findById(1L)).thenReturn(Optional.of(vendor));
+        var receipt=new com.samaksh.farms.sourcing.SourcingReceipt();receipt.setId(2L);receipt.setVendorId(1L);
+        receipt.setQuantityKg(new BigDecimal("10"));receipt.setBoxesPerKg(BigDecimal.ONE);receipt.setCostPerKg(new BigDecimal("180"));
+        receipt.setSellingPricePerKg(new BigDecimal("250"));receipt.setTransportCost(new BigDecimal("100"));receipt.setOtherCost(BigDecimal.ZERO);
+        receipt.setExpensesBorneBy("VENDOR");receipt.setExpensesPaidBy("FARM");receipt.setSoldKg(BigDecimal.ZERO);
+        when(receipts.findById(2L)).thenReturn(Optional.of(receipt));
+        var saved=new ArrayList<com.samaksh.farms.sourcing.SourcingPayment>();
+        when(payments.findAll()).thenAnswer(i->new ArrayList<>(saved));
+        when(payments.save(any())).thenAnswer(i->{com.samaksh.farms.sourcing.SourcingPayment p=i.getArgument(0);p.setId((long)saved.size()+1);saved.add(p);return p;});
+        var sourcing=new com.samaksh.farms.sourcing.SourcingService(vendors,receipts,payments,
+                mock(com.samaksh.farms.sourcing.SourcingRecoveryRepository.class),mock(com.samaksh.farms.sourcing.SourcingSettingsRepository.class),service,accounts,audit);
+        var date=com.samaksh.farms.common.time.BusinessTime.today();
+        for(long accountId:List.of(1L,3L,5L)) {
+            service.record(new MoneyRequest("opening-"+accountId,"OPENING",null,accountId,new BigDecimal("200"),"Opening",null,null,date),auth);
+            var tooMuch=new com.samaksh.farms.sourcing.SourcingRequests.Payment("over-"+accountId,2L,accountId,new BigDecimal("201"),date,"");
+            assertThrows(IllegalArgumentException.class,()->sourcing.payment(null,tooMuch,auth));
+            sourcing.payment(null,new com.samaksh.farms.sourcing.SourcingRequests.Payment("pay-"+accountId,2L,accountId,new BigDecimal("200"),date,""),auth);
+            assertEquals(0,balance(accountId).signum());
+        }
+        for(int i=0;i<2;i++) sourcing.payment(null,new com.samaksh.farms.sourcing.SourcingRequests.Payment("personal-"+i,2L,4L,new BigDecimal("550"),date,""),auth);
+        assertEquals(0,balance(4L).compareTo(new BigDecimal("-1100")));
+        var error=assertThrows(IllegalArgumentException.class,()->sourcing.payment(null,new com.samaksh.farms.sourcing.SourcingRequests.Payment("settled",2L,4L,BigDecimal.ONE,date,""),auth));
+        assertTrue(error.getMessage().contains("outstanding Rs. 0.00"));
+        service.record(new MoneyRequest("repay-funds","OPENING",null,3L,new BigDecimal("1100"),"Opening",null,null,date),auth);
+        service.record(new MoneyRequest("repay-vendor","REIMBURSEMENT",3L,4L,new BigDecimal("1100"),"Repay vendor spending",null,null,date),auth);
+        assertEquals(0,balance(4L).signum());assertEquals(0,balance(3L).signum());
+        assertEquals(5,journal.stream().filter(e->e.getType().equals("EXPENSE")).count());
     }
 
     @Test void failedSplitWriteRollsBackTheWholeServiceTransaction() {
