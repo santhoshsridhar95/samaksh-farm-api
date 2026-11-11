@@ -40,11 +40,13 @@ class DirectSaleControllerTest {
     }
     DirectSaleController.Request request(Long customerId, String phone, String email, Long collector) {
         return new DirectSaleController.Request("request-1", customerId, "Customer A", phone, email, "Bengaluru", "Farm gate", "Mushrooms",
-                BigDecimal.ONE, new BigDecimal("250"), new BigDecimal("250"), "Test sale", collector);
+                BigDecimal.ONE, new BigDecimal("250"), new BigDecimal("250"), "Test sale", collector,null,null);
     }
     UsernamePasswordAuthenticationToken auth(String role) {
         return new UsernamePasswordAuthenticationToken(User.builder().id(1L).name("Santosh").build(), null, List.of(new SimpleGrantedAuthority("ROLE_" + role)));
     }
+    @Test void historyIncludesEditableAttributesAndFingerprint(){sale.setUnitPrice(250d);sale.setSalesChannel("DIRECT");sale.setRemarks("Notes");sale.setCollectorUserId(2L);when(sales.findAll()).thenReturn(List.of(sale));var rows=(List<DirectSaleController.SaleView>)controller.history().getData();assertEquals(250d,rows.getFirst().unitPrice());assertEquals("Notes",rows.getFirst().remarks());assertNotNull(rows.getFirst().fingerprint());}
+    @Test void stalePurchaseIsRejectedBeforeMoneyChanges(){sale.setSalesChannel("DIRECT");var old=request(7L,null,null,2L);var r=new DirectSaleController.Request("edit",7L,old.customerName(),null,null,null,old.purchaseLocation(),old.productName(),old.quantity(),old.unitPrice(),old.amountCollected(),old.remarks(),2L,java.time.LocalDate.of(2026,1,1),"stale");assertThrows(IllegalArgumentException.class,()->controller.edit(10L,r,auth("SUPER_ADMIN")));verifyNoInteractions(saleService);}
     @Test void adminCollectorIsPassedToSaleServiceAndResponseIncludesCustomerAndSale() {
         when(users.findById(2L)).thenReturn(Optional.of(User.builder().id(2L).active(true).build()));
         var result = controller.create(request(7L, null, null, 2L), auth("SUPER_ADMIN"));

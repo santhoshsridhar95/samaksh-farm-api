@@ -134,8 +134,9 @@ public class SourcingService {
         var receipt = getReceipt(r.receiptId());
         if (getVendor(receipt.getVendorId()).getKind().equals("OWN_FARM"))
             throw new IllegalArgumentException("Own-farm receipts do not create vendor payments");
-        if (r.amount().signum() < 0 || additional.signum() < 0 || r.amount().compareTo(view(receipt, payments.findAll()).balanceDue().max(BigDecimal.ZERO)) > 0)
-            throw new IllegalArgumentException("Payment exceeds the vendor balance after deductions");
+        if (r.amount().signum() < 0 || additional.signum() < 0)
+            throw new IllegalArgumentException("Payment amounts cannot be negative");
+        validateInvoicePayment(r.amount(), view(receipt, payments.findAll()).balanceDue());
         money.validateFunding(request.sources());
         var invoiceRemaining = r.amount();
         var saved = new ArrayList<SourcingPayment>();
@@ -172,14 +173,20 @@ public class SourcingService {
         if (id != null && !payment.getReceiptId().equals(r.receiptId())) throw new IllegalArgumentException("Cannot move a payment to a different receipt");
         var all = payments.findAll().stream().filter(p -> !Objects.equals(p.getId(), id)).toList();
         var due = view(receipt, all).balanceDue();
-        if (r.amount().compareTo(due.max(BigDecimal.ZERO)) > 0) throw new IllegalArgumentException("Payment exceeds the vendor balance after deductions");
+        validateInvoicePayment(r.amount(), due);
         var additional=r.additionalAmount()==null?BigDecimal.ZERO:r.additionalAmount();
-        if(r.amount().signum()<0 || additional.signum()<0 || r.amount().add(additional).signum()<=0)throw new IllegalArgumentException("Enter an invoice payment or an additional recoverable amount");
+        // A zero-valued edit reverses the linked ledger entries while retaining the payment and audit trail.
+        if(r.amount().signum()<0 || additional.signum()<0 || (id==null && r.amount().add(additional).signum()<=0))throw new IllegalArgumentException("Enter an invoice payment or an additional recoverable amount");
         if(id!=null) {
             var recovered=recoveries.findByPaymentId(id);
             var total=recovered.stream().map(SourcingRecovery::getAmount).reduce(BigDecimal.ZERO,BigDecimal::add);
             if(additional.compareTo(total)<0)throw new IllegalArgumentException("Additional amount cannot be less than money already recovered. Edit recoveries first.");
             if(recovered.stream().anyMatch(x->x.getDate().isBefore(r.date())))throw new IllegalArgumentException("Payment date cannot follow a recovery date");
+        }
+        if (id != null) {
+            var refund = payment.getAmount().add(payment.getAdditionalAmount() == null ? BigDecimal.ZERO : payment.getAdditionalAmount());
+            if (Objects.equals(payment.getSourceAccountId(), r.sourceAccountId())) refund = refund.subtract(r.amount().add(additional));
+            money.validatePersonalRefund(payment.getSourceAccountId(), refund);
         }
         String before = id == null ? "" : "additional " + payment.getAdditionalAmount() + ", amount " + payment.getAmount() + ", source " + payment.getSourceAccountId() + ", date " + payment.getDate();
         if (id != null && payment.getMoneyEntryId()!=null) money.reverseLinked(payment.getMoneyEntryId(), "Vendor payment correction #" + id, auth);
@@ -239,6 +246,14 @@ public class SourcingService {
         var c = costs(r.getQuantityKg(), r.getCostPerKg(), r.getSellingPricePerKg(), r.getTransportCost().add(r.getOtherCost()), r.getExpensesBorneBy(), r.getExpensesPaidBy(), v.getKind().equals("OWN_FARM"), r.getSoldKg(), spoiled);
         var paid = paid(r.getId(), all);
         return new ReceiptView(r, v.getName(), v.getKind(), c, paid, c.payable().subtract(paid));
+    }
+    private void validateInvoicePayment(BigDecimal amount, BigDecimal due) {
+        var available = due.max(BigDecimal.ZERO);
+        if (amount.compareTo(available) > 0)
+            throw new IllegalArgumentException("Invoice payment Rs. " + cash(amount)
+                    + " exceeds this receipt's outstanding Rs. " + cash(available)
+                    + " after deductions and previous payments. This limit applies to every funding source, including personal funds."
+                    + " Enter any vendor advance under Additional paid — recoverable later.");
     }
     private BigDecimal paid(Long id, List<SourcingPayment> all) { return all.stream().filter(p -> id != null && id.equals(p.getReceiptId())).map(SourcingPayment::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add); }
     private SourcingVendor getVendor(Long id) { return vendors.findById(id).orElseThrow(() -> new IllegalArgumentException("Source not found")); }

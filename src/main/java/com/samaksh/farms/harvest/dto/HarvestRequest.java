@@ -11,7 +11,7 @@ public class HarvestRequest {
     private java.time.LocalDate harvestDate;
 
     private Double quantity;
-    private Integer numberOfBoxes;
+    private java.math.BigDecimal numberOfBoxes;
 
     private String remarks;
 }
