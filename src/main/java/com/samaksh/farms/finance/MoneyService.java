@@ -272,7 +272,7 @@ public class MoneyService {
         var currentOwed=balances(journal).getOrDefault(r.destinationId(),BigDecimal.ZERO).negate();
         var datedOwed=balances(journal.stream().filter(e->!e.getDate().isAfter(r.date())).toList()).getOrDefault(r.destinationId(),BigDecimal.ZERO).negate();
         if(r.amount().compareTo(currentOwed.min(datedOwed))>0)
-            throw new IllegalArgumentException("Reimbursement exceeds the personal amount owed. Check the payment date and previous repayments.");
+            throw new IllegalArgumentException("Reimbursement exceeds the amount repayable on " + r.date() + ". Owed now: Rs " + currentOwed.max(BigDecimal.ZERO).toPlainString() + "; owed on payment date: Rs " + datedOwed.max(BigDecimal.ZERO).toPlainString() + "; maximum repayment: Rs " + currentOwed.min(datedOwed).max(BigDecimal.ZERO).toPlainString() + ". Check the actual repayment date and recorded expenses.");
     }
 
     public record EditRequest(@jakarta.validation.Valid @jakarta.validation.constraints.NotNull MoneyRequest entry,
